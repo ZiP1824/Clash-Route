@@ -1,5 +1,7 @@
 import AddRoundedIcon from '@mui/icons-material/AddRounded'
 import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded'
+import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined'
+import FileUploadOutlinedIcon from '@mui/icons-material/FileUploadOutlined'
 import SaveOutlinedIcon from '@mui/icons-material/SaveOutlined'
 import {
   Box,
@@ -14,6 +16,11 @@ import {
   TextField,
   Typography,
 } from '@mui/material'
+import {
+  open as openDialog,
+  save as saveDialog,
+} from '@tauri-apps/plugin-dialog'
+import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { BasePage, Switch } from '@/components/base'
@@ -27,6 +34,7 @@ import {
   enhanceProfiles,
   getRuntimeConfig,
 } from '@/services/cmds'
+import delayManager from '@/services/delay'
 import { showNotice } from '@/services/notice-service'
 
 const defaultCategories: Required<ISmartRoutingCategories> = {
@@ -39,6 +47,19 @@ const defaultCategories: Required<ISmartRoutingCategories> = {
 }
 
 type SmartRoutingDraft = Required<ISmartRoutingConfig>
+
+type PolicyDelayInfo = {
+  delay: number
+  detail?: string
+}
+
+type SmartRoutingRulesExport = {
+  app: 'clash-verge-smart'
+  type: 'smart-routing-custom-rules'
+  version: 1
+  exported_at: string
+  custom_rules: ISmartRoutingCustomRule[]
+}
 
 const defaultSmartRouting: SmartRoutingDraft = {
   enabled: false,
@@ -85,9 +106,63 @@ function collectRuntimeGroups(config: IConfigData | null) {
   )
 }
 
+function getProxyDelay(proxy?: { history?: IProxyItem['history'] } | null) {
+  if (!proxy) return -1
+  if (proxy.history?.length) {
+    return proxy.history[proxy.history.length - 1].delay || 1e6
+  }
+  return -1
+}
+
+function normalizeCustomRule(
+  value: unknown,
+  fallbackPolicy: string,
+): ISmartRoutingCustomRule | null {
+  if (!value || typeof value !== 'object') return null
+  const item = value as Partial<ISmartRoutingCustomRule>
+  const ruleValue = `${item.value ?? ''}`.trim()
+  if (!ruleValue) return null
+
+  return {
+    enabled: item.enabled ?? true,
+    type: item.type === 'process' ? 'process' : 'domain',
+    value: ruleValue,
+    policy: `${item.policy ?? fallbackPolicy}`.trim() || fallbackPolicy,
+  }
+}
+
+function customRuleKey(rule: ISmartRoutingCustomRule) {
+  return `${rule.type ?? 'domain'}:${(rule.value ?? '').trim().toLowerCase()}`
+}
+
+function parseImportedRules(
+  content: string,
+  fallbackPolicy: string,
+): ISmartRoutingCustomRule[] {
+  const parsed = JSON.parse(content)
+  const rawRules: unknown[] | null = Array.isArray(parsed)
+    ? parsed
+    : Array.isArray(parsed?.custom_rules)
+      ? parsed.custom_rules
+      : Array.isArray(parsed?.rules)
+        ? parsed.rules
+        : null
+
+  if (!rawRules) {
+    throw new Error('Invalid smart routing rules file')
+  }
+
+  return rawRules
+    .map((rule) => normalizeCustomRule(rule, fallbackPolicy))
+    .filter((rule): rule is ISmartRoutingCustomRule => Boolean(rule))
+}
+
 const SmartRoutingPage = () => {
   const { verge, patchVerge, mutateVerge } = useVerge()
   const [policyTargets, setPolicyTargets] = useState<string[]>([])
+  const [policyDelayMap, setPolicyDelayMap] = useState<
+    Record<string, PolicyDelayInfo>
+  >({})
   const [draft, setDraft] = useState<SmartRoutingDraft>(() =>
     normalizeSmartRouting(verge?.smart_routing),
   )
@@ -103,6 +178,20 @@ const SmartRoutingPage = () => {
       .then(([config, proxyData]) => {
         if (!active) return
 
+        const nextDelayMap: Record<string, PolicyDelayInfo> = {}
+
+        proxyData?.proxies.forEach((proxy) => {
+          nextDelayMap[proxy.name] = { delay: getProxyDelay(proxy) }
+        })
+
+        proxyData?.groups.forEach((group) => {
+          const currentProxy = group.now ? proxyData.records[group.now] : null
+          nextDelayMap[group.name] = {
+            delay: getProxyDelay(currentProxy) || getProxyDelay(group),
+            detail: group.now,
+          }
+        })
+
         setPolicyTargets(
           Array.from(
             new Set([
@@ -112,9 +201,13 @@ const SmartRoutingPage = () => {
             ]),
           ).filter(Boolean),
         )
+        setPolicyDelayMap(nextDelayMap)
       })
       .catch(() => {
-        if (active) setPolicyTargets([])
+        if (active) {
+          setPolicyTargets([])
+          setPolicyDelayMap({})
+        }
       })
 
     return () => {
@@ -196,6 +289,61 @@ const SmartRoutingPage = () => {
     }))
   }, [])
 
+  const exportCustomRules = useCallback(async () => {
+    const file = await saveDialog({
+      defaultPath: 'smart-routing-rules.json',
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+    })
+    if (!file) return
+
+    const exportData: SmartRoutingRulesExport = {
+      app: 'clash-verge-smart',
+      type: 'smart-routing-custom-rules',
+      version: 1,
+      exported_at: new Date().toISOString(),
+      custom_rules: draft.custom_rules
+        .map((rule) => normalizeCustomRule(rule, draft.proxy_policy))
+        .filter((rule): rule is ISmartRoutingCustomRule => Boolean(rule)),
+    }
+
+    await writeTextFile(file, JSON.stringify(exportData, null, 2))
+    showNotice.success('单独规则已导出')
+  }, [draft.custom_rules, draft.proxy_policy])
+
+  const importCustomRules = useCallback(async () => {
+    const selected = await openDialog({
+      multiple: false,
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+    })
+    if (!selected || Array.isArray(selected)) return
+
+    try {
+      const content = await readTextFile(selected)
+      const importedRules = parseImportedRules(content, draft.proxy_policy)
+
+      setDraft((prev) => {
+        const ruleMap = new Map<string, ISmartRoutingCustomRule>()
+        prev.custom_rules
+          .map((rule) => normalizeCustomRule(rule, prev.proxy_policy))
+          .filter((rule): rule is ISmartRoutingCustomRule => Boolean(rule))
+          .forEach((rule) => ruleMap.set(customRuleKey(rule), rule))
+        importedRules.forEach((rule) => ruleMap.set(customRuleKey(rule), rule))
+
+        return {
+          ...prev,
+          custom_rules: Array.from(ruleMap.values()),
+        }
+      })
+
+      showNotice.success(
+        `已导入 ${importedRules.length} 条单独规则，请保存应用`,
+      )
+    } catch (error) {
+      console.error(error)
+      showNotice.error('导入失败，请选择智能分流规则 JSON 文件')
+    }
+  }, [draft.proxy_policy])
+
   const saveConfig = useCallback(async () => {
     const smart_routing: ISmartRoutingConfig = {
       enabled: draft.enabled,
@@ -234,14 +382,60 @@ const SmartRoutingPage = () => {
     <Select
       size="small"
       value={value}
+      renderValue={(selected) => selected}
       onChange={(event) => onChange(event.target.value)}
       sx={{ width, '> div': { py: '7.5px' } }}
     >
-      {policyOptions.map((policy) => (
-        <MenuItem key={policy} value={policy}>
-          {policy}
-        </MenuItem>
-      ))}
+      {policyOptions.map((policy) => {
+        const delayInfo = policyDelayMap[policy]
+        const delayText = delayInfo
+          ? delayManager.formatDelay(delayInfo.delay)
+          : undefined
+        const delayColor = delayInfo
+          ? delayManager.formatDelayColor(delayInfo.delay)
+          : undefined
+
+        return (
+          <MenuItem key={policy} value={policy}>
+            <Box
+              sx={{
+                alignItems: 'center',
+                display: 'flex',
+                gap: 1.5,
+                justifyContent: 'space-between',
+                width: '100%',
+              }}
+            >
+              <Box
+                sx={{
+                  minWidth: 0,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {policy}
+              </Box>
+              {delayText && (
+                <Box
+                  sx={{
+                    color: delayColor || 'text.secondary',
+                    flexShrink: 0,
+                    fontSize: 12,
+                    lineHeight: 1,
+                    minWidth: 42,
+                    textAlign: 'right',
+                  }}
+                  title={delayInfo?.detail}
+                >
+                  {delayInfo?.detail ? `${delayInfo.detail} ` : ''}
+                  {delayText}
+                </Box>
+              )}
+            </Box>
+          </MenuItem>
+        )
+      })}
     </Select>
   )
 
@@ -357,7 +551,23 @@ const SmartRoutingPage = () => {
                 </IconButton>
               </ListItem>
             ))}
-            <ListItem sx={{ px: 2, py: 0.75 }}>
+            <ListItem sx={{ gap: 1, px: 2, py: 0.75 }}>
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<FileUploadOutlinedIcon />}
+                onClick={importCustomRules}
+              >
+                导入
+              </Button>
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<FileDownloadOutlinedIcon />}
+                onClick={exportCustomRules}
+              >
+                导出
+              </Button>
               <Button
                 size="small"
                 variant="outlined"
