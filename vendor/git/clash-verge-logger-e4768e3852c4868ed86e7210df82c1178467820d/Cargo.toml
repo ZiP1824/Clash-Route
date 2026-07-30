@@ -1,0 +1,17 @@
+[package]
+name = "clash_verge_logger"
+version = "0.2.2"
+edition = "2024"
+authors = ["Tunglies"]
+license = "GPL-3.0"
+
+[features]
+color = ["nu-ansi-term"]
+
+[dependencies]
+arraydeque = "0.5"
+compact_str = { version = "0.9", features = ["rkyv", "smallvec"] }
+flexi_logger = "0.31"
+log = "0.4"
+nu-ansi-term = { version = "0.50", optional = true }
+tokio = { version = "1.48", features = ["sync"] }

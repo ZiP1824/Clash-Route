@@ -1,24 +1,24 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "identifier": "io.github.clash-verge-rev.clash-verge-rev",
+  "identifier": "io.github.clash-verge-rev.clash-verge-smart",
   "bundle": {
     "targets": ["deb", "rpm"],
     "linux": {
       "deb": {
         "depends": ["openssl", "libayatana-appindicator3-1"],
         "desktopTemplate": "./packages/linux/clash-verge.desktop",
-        "provides": ["clash-verge"],
-        "conflicts": ["clash-verge"],
-        "replaces": ["clash-verge"],
+        "provides": ["clash-verge-smart"],
+        "conflicts": ["clash-verge-smart"],
+        "replaces": ["clash-verge-smart"],
         "postInstallScript": "./packages/linux/post-install.sh",
         "preRemoveScript": "./packages/linux/pre-remove.sh"
       },
       "rpm": {
         "depends": ["openssl", "libayatana-appindicator-gtk3"],
         "desktopTemplate": "./packages/linux/clash-verge.desktop",
-        "provides": ["clash-verge"],
-        "conflicts": ["clash-verge"],
-        "obsoletes": ["clash-verge"],
+        "provides": ["clash-verge-smart"],
+        "conflicts": ["clash-verge-smart"],
+        "obsoletes": ["clash-verge-smart"],
         "postInstallScript": "./packages/linux/post-install.sh",
         "preRemoveScript": "./packages/linux/pre-remove.sh"
       }

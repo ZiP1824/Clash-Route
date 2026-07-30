@@ -13,9 +13,9 @@ pub mod network {
         pub const DEFAULT_HTTP: u16 = 7899;
 
         #[cfg(not(feature = "verge-dev"))]
-        pub const SINGLETON_SERVER: u16 = 33331;
+        pub const SINGLETON_SERVER: u16 = 33332;
         #[cfg(feature = "verge-dev")]
-        pub const SINGLETON_SERVER: u16 = 11233;
+        pub const SINGLETON_SERVER: u16 = 11234;
     }
 }
 
@@ -45,8 +45,8 @@ pub mod timing {
 }
 
 pub mod files {
-    pub const RUNTIME_CONFIG: &str = "clash-verge.yaml";
-    pub const CHECK_CONFIG: &str = "clash-verge-check.yaml";
+    pub const RUNTIME_CONFIG: &str = "clash-verge-smart.yaml";
+    pub const CHECK_CONFIG: &str = "clash-verge-smart-check.yaml";
     pub const DNS_CONFIG: &str = "dns_config.yaml";
     pub const WINDOW_STATE: &str = "window_state.json";
 }
