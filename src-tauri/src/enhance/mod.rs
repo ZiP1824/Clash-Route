@@ -3,6 +3,7 @@ pub mod field;
 mod merge;
 mod script;
 pub mod seq;
+mod smart_routing;
 mod tun;
 
 use self::{
@@ -11,6 +12,7 @@ use self::{
     merge::use_merge,
     script::use_script,
     seq::{SeqMap, use_seq},
+    smart_routing::apply_smart_routing,
     tun::use_tun,
 };
 use crate::utils::dirs;
@@ -36,6 +38,7 @@ struct ConfigValues {
     socks_enabled: bool,
     http_enabled: bool,
     enable_dns_settings: bool,
+    smart_routing: Option<serde_json::Value>,
     #[cfg(not(target_os = "windows"))]
     redir_enabled: bool,
     #[cfg(target_os = "linux")]
@@ -116,6 +119,7 @@ async fn get_config_values() -> ConfigValues {
         ref verge_socks_enabled,
         ref verge_http_enabled,
         ref enable_dns_settings,
+        ref smart_routing,
         ..
     } = **verge_arc;
 
@@ -127,6 +131,7 @@ async fn get_config_values() -> ConfigValues {
         verge_http_enabled.unwrap_or(false),
         enable_dns_settings.unwrap_or(false),
     );
+    let smart_routing = smart_routing.clone();
 
     #[cfg(not(target_os = "windows"))]
     let redir_enabled = verge_arc.verge_redir_enabled.unwrap_or(false);
@@ -145,6 +150,7 @@ async fn get_config_values() -> ConfigValues {
         socks_enabled,
         http_enabled,
         enable_dns_settings,
+        smart_routing,
         #[cfg(not(target_os = "windows"))]
         redir_enabled,
         #[cfg(target_os = "linux")]
@@ -693,6 +699,7 @@ pub async fn enhance() -> Result<(Mapping, HashSet<String>, HashMap<String, Resu
         socks_enabled,
         http_enabled,
         enable_dns_settings,
+        smart_routing,
         #[cfg(not(target_os = "windows"))]
         redir_enabled,
         #[cfg(target_os = "linux")]
@@ -734,6 +741,7 @@ pub async fn enhance() -> Result<(Mapping, HashSet<String>, HashMap<String, Resu
     let config = apply_builtin_scripts(config, clash_core, enable_builtin).await;
     let config = use_tun(config, enable_tun);
     let config = apply_dns_settings(config, enable_dns_settings).await;
+    let config = apply_smart_routing(config, smart_routing.as_ref());
 
     // 手动覆盖前锁定 app 权威字段。
     let control_plane = snapshot_control_plane(&config);

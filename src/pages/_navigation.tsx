@@ -3,6 +3,7 @@ import ForkRightOutlinedIcon from '@mui/icons-material/ForkRightOutlined'
 import HomeOutlinedIcon from '@mui/icons-material/HomeOutlined'
 import LanguageOutlinedIcon from '@mui/icons-material/LanguageOutlined'
 import LockOpenOutlinedIcon from '@mui/icons-material/LockOpenOutlined'
+import RouteOutlinedIcon from '@mui/icons-material/RouteOutlined'
 import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined'
 import SubjectOutlinedIcon from '@mui/icons-material/SubjectOutlined'
 import WifiOutlinedIcon from '@mui/icons-material/WifiOutlined'
@@ -151,6 +152,14 @@ export const navItems: NavigationItem[] = [
     ...navigationItems.rules,
     icon: [<ForkRightOutlinedIcon key="mui" />, <RulesSvg key="svg" />],
     ...createLazyRoute(() => import('./rules'), 'rules'),
+  },
+  {
+    ...navigationItems.smartRouting,
+    icon: [
+      <RouteOutlinedIcon key="mui" />,
+      <ForkRightOutlinedIcon key="svg" />,
+    ],
+    ...createLazyRoute(() => import('./smart-routing')),
   },
   {
     ...navigationItems.logs,

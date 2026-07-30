@@ -276,6 +276,34 @@ interface IVergeTestItem {
   icon?: string
   url: string
 }
+
+interface ISmartRoutingCategories {
+  ads?: boolean
+  lan?: boolean
+  domestic?: boolean
+  foreign?: boolean
+  ai?: boolean
+  streaming?: boolean
+}
+
+interface ISmartRoutingCustomRule {
+  enabled?: boolean
+  type?: 'domain' | 'process'
+  value?: string
+  policy?: string
+}
+
+interface ISmartRoutingConfig {
+  enabled?: boolean
+  proxy_policy?: string
+  direct_policy?: string
+  reject_policy?: string
+  final_policy?: string
+  append_match?: boolean
+  categories?: ISmartRoutingCategories
+  custom_rules?: ISmartRoutingCustomRule[]
+}
+
 interface IAddress {
   V4?: {
     ip: string
@@ -953,6 +981,7 @@ interface IVergeConfig {
   webdav_username?: string
   webdav_password?: string
   home_cards?: Record<string, boolean>
+  smart_routing?: ISmartRoutingConfig
   enable_hover_jump_navigator?: boolean
   hover_jump_navigator_delay?: number
   enable_external_controller?: boolean

@@ -143,6 +143,9 @@ pub struct IVerge {
     /// 控制首页各个卡片的显示和隐藏
     pub home_cards: Option<serde_json::Value>,
 
+    /// Smart routing rule generation settings.
+    pub smart_routing: Option<serde_json::Value>,
+
     /// 切换代理时自动关闭连接
     pub auto_close_connection: Option<bool>,
 
@@ -448,6 +451,7 @@ impl IVerge {
             auto_light_weight_minutes: Some(10),
             enable_dns_settings: Some(false),
             home_cards: None,
+            smart_routing: None,
             enable_external_controller: Some(false),
             ..Self::default()
         }
@@ -553,6 +557,7 @@ impl IVerge {
         patch!(auto_light_weight_minutes);
         patch!(enable_dns_settings);
         patch!(home_cards);
+        patch!(smart_routing);
         patch!(enable_external_controller);
     }
 
