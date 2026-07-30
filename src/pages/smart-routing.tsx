@@ -21,6 +21,7 @@ import {
   save as saveDialog,
 } from '@tauri-apps/plugin-dialog'
 import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs'
+import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { BasePage, Switch } from '@/components/base'
@@ -28,6 +29,7 @@ import {
   SettingItem,
   SettingList,
 } from '@/components/setting/mods/setting-comp'
+import { RoutingMonitor } from '@/components/smart-routing/routing-monitor'
 import { useVerge } from '@/hooks/use-verge'
 import {
   calcuProxies,
@@ -344,6 +346,38 @@ const SmartRoutingPage = () => {
     }
   }, [draft.proxy_policy])
 
+  const openRoutingMonitor = useCallback(async () => {
+    try {
+      const existing = await WebviewWindow.getByLabel('smart-routing-monitor')
+      if (existing) {
+        await existing.show()
+        await existing.setFocus()
+        return
+      }
+
+      const popup = new WebviewWindow('smart-routing-monitor', {
+        url: '/smart-routing-monitor',
+        title: '智能分流走向',
+        width: 380,
+        height: 460,
+        minWidth: 300,
+        minHeight: 260,
+        resizable: true,
+        decorations: true,
+        visible: true,
+        focus: true,
+      })
+
+      await popup.once('tauri://error', (event) => {
+        console.error('Failed to create smart routing monitor window', event)
+        showNotice.error('弹出窗口创建失败')
+      })
+    } catch (error) {
+      console.error(error)
+      showNotice.error('弹出窗口创建失败')
+    }
+  }, [])
+
   const saveConfig = useCallback(async () => {
     const smart_routing: ISmartRoutingConfig = {
       enabled: draft.enabled,
@@ -578,6 +612,12 @@ const SmartRoutingPage = () => {
               </Button>
             </ListItem>
           </List>
+        </SettingList>
+
+        <SettingList title="实时走向">
+          <Box sx={{ px: 2, py: 0.75 }}>
+            <RoutingMonitor compact onPopout={openRoutingMonitor} />
+          </Box>
         </SettingList>
 
         <SettingList title="规则模块">

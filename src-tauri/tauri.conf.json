@@ -44,7 +44,11 @@
   },
   "app": {
     "security": {
-      "capabilities": ["desktop-capability", "migrated"],
+      "capabilities": [
+        "desktop-capability",
+        "desktop-windows-capability",
+        "migrated"
+      ],
       "assetProtocol": {
         "enable": true,
         "scope": {
