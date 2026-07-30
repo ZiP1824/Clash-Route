@@ -1,6 +1,7 @@
 import AddRoundedIcon from '@mui/icons-material/AddRounded'
 import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded'
 import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined'
+import FileOpenOutlinedIcon from '@mui/icons-material/FileOpenOutlined'
 import FileUploadOutlinedIcon from '@mui/icons-material/FileUploadOutlined'
 import SaveOutlinedIcon from '@mui/icons-material/SaveOutlined'
 import {
@@ -56,7 +57,7 @@ type PolicyDelayInfo = {
 }
 
 type SmartRoutingRulesExport = {
-  app: 'clash-verge-smart'
+  app: 'clash-verge-route'
   type: 'smart-routing-custom-rules'
   version: 1
   exported_at: string
@@ -299,7 +300,7 @@ const SmartRoutingPage = () => {
     if (!file) return
 
     const exportData: SmartRoutingRulesExport = {
-      app: 'clash-verge-smart',
+      app: 'clash-verge-route',
       type: 'smart-routing-custom-rules',
       version: 1,
       exported_at: new Date().toISOString(),
@@ -346,6 +347,22 @@ const SmartRoutingPage = () => {
     }
   }, [draft.proxy_policy])
 
+  const selectProcessFile = useCallback(
+    async (index: number) => {
+      const selected = await openDialog({
+        multiple: false,
+        filters: [{ name: 'Executable', extensions: ['exe'] }],
+      })
+      if (!selected || Array.isArray(selected)) return
+
+      updateCustomRule(index, {
+        type: 'process',
+        value: selected,
+      })
+    },
+    [updateCustomRule],
+  )
+
   const openRoutingMonitor = useCallback(async () => {
     try {
       const existing = await WebviewWindow.getByLabel('smart-routing-monitor')
@@ -356,7 +373,7 @@ const SmartRoutingPage = () => {
       }
 
       const popup = new WebviewWindow('smart-routing-monitor', {
-        url: '/smart-routing-monitor',
+        url: '/?window=smart-routing-monitor',
         title: '智能分流走向',
         width: 380,
         height: 460,
@@ -577,6 +594,17 @@ const SmartRoutingPage = () => {
                   rule.policy || draft.proxy_policy,
                   (policy) => updateCustomRule(index, { policy }),
                 )}
+                {rule.type === 'process' && (
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<FileOpenOutlinedIcon />}
+                    onClick={() => selectProcessFile(index)}
+                    sx={{ flexShrink: 0 }}
+                  >
+                    选择
+                  </Button>
+                )}
                 <IconButton
                   size="small"
                   onClick={() => removeCustomRule(index)}
@@ -616,7 +644,11 @@ const SmartRoutingPage = () => {
 
         <SettingList title="实时走向">
           <Box sx={{ px: 2, py: 0.75 }}>
-            <RoutingMonitor compact onPopout={openRoutingMonitor} />
+            <RoutingMonitor
+              compact
+              customRules={draft.custom_rules}
+              onPopout={openRoutingMonitor}
+            />
           </Box>
         </SettingList>
 

@@ -18,8 +18,8 @@ import {
   Menu,
   MenuItem,
   Paper,
-  SvgIcon,
   ThemeProvider,
+  Typography,
 } from '@mui/material'
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
@@ -36,9 +36,7 @@ import {
 import { useTranslation } from 'react-i18next'
 import { Outlet, useLocation, useNavigate } from 'react-router'
 
-import iconDark from '@/assets/image/icon_dark.svg?react'
-import iconLight from '@/assets/image/icon_light.svg?react'
-import LogoSvg from '@/assets/image/logo.svg?react'
+import routeIcon from '@/assets/image/icon.png'
 import { BaseErrorBoundary, BaseLoading } from '@/components/base'
 import { LayoutItem } from '@/components/layout/layout-item'
 import { LayoutTraffic } from '@/components/layout/layout-traffic'
@@ -351,18 +349,30 @@ const Layout = () => {
                   justifyContent: 'space-between',
                 }}
               >
-                <SvgIcon
-                  component={isDark ? iconDark : iconLight}
-                  style={{
-                    height: '36px',
-                    width: '36px',
-                    marginTop: '-3px',
-                    marginRight: '5px',
-                    marginLeft: '-3px',
+                <Box
+                  component="img"
+                  src={routeIcon}
+                  alt="Clash Verge Route"
+                  sx={{
+                    height: 36,
+                    width: 36,
+                    mt: '-3px',
+                    mr: 0.75,
+                    ml: '-3px',
+                    borderRadius: 1,
                   }}
-                  inheritViewBox
                 />
-                <LogoSvg fill={isDark ? 'white' : 'black'} />
+                <Typography
+                  sx={{
+                    color: isDark ? 'white' : 'black',
+                    fontSize: 19,
+                    fontWeight: 800,
+                    lineHeight: '27px',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  Clash Verge Route
+                </Typography>
               </div>
               <UpdateButton className="the-newbtn" />
             </div>

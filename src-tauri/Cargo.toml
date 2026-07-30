@@ -1,11 +1,11 @@
 [package]
-name = "clash-verge-smart"
+name = "clash-verge-route"
 version = "2.5.2"
-description = "clash verge smart"
+description = "clash verge route"
 authors = ["zzzgydi", "Tunglies", "wonfen", "MystiPanda"]
 license = "GPL-3.0-only"
 repository = "https://github.com/clash-verge-rev/clash-verge-rev.git"
-default-run = "clash-verge-smart"
+default-run = "clash-verge-route"
 build = "build.rs"
 edition = "2024"
 rust-version = "1.95"

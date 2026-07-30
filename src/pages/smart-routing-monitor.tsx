@@ -11,6 +11,7 @@ import { useMemo } from 'react'
 
 import { BaseLoading } from '@/components/base'
 import { RoutingMonitor } from '@/components/smart-routing/routing-monitor'
+import { useVerge } from '@/hooks/use-verge'
 import { useThemeMode } from '@/services/states'
 
 import { useCustomTheme } from './_layout/hooks'
@@ -18,6 +19,7 @@ import { useCustomTheme } from './_layout/hooks'
 const SmartRoutingMonitorPage = () => {
   const mode = useThemeMode()
   const { theme } = useCustomTheme()
+  const { verge } = useVerge()
   const appWindow = useMemo(() => getCurrentWebviewWindow(), [])
 
   if (!theme) {
@@ -76,7 +78,7 @@ const SmartRoutingMonitorPage = () => {
           </IconButton>
         </Box>
         <Box sx={{ flex: 1, minHeight: 0, overflow: 'hidden', p: 1 }}>
-          <RoutingMonitor />
+          <RoutingMonitor customRules={verge?.smart_routing?.custom_rules} />
         </Box>
       </Paper>
     </ThemeProvider>

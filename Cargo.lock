@@ -1103,16 +1103,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "clash-verge-signal"
-version = "0.1.0"
-dependencies = [
- "clash-verge-logging",
- "log",
- "tokio",
-]
-
-[[package]]
-name = "clash-verge-smart"
+name = "clash-verge-route"
 version = "2.5.2"
 dependencies = [
  "aes-gcm",
@@ -1192,6 +1183,15 @@ dependencies = [
  "windows-sys 0.61.2",
  "winreg 0.56.0",
  "zip 8.6.0",
+]
+
+[[package]]
+name = "clash-verge-signal"
+version = "0.1.0"
+dependencies = [
+ "clash-verge-logging",
+ "log",
+ "tokio",
 ]
 
 [[package]]

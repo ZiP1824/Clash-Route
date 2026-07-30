@@ -3,7 +3,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "bundle": {
     "active": true,
-    "longDescription": "Clash Verge Smart",
+    "longDescription": "Clash Verge Route",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -12,11 +12,11 @@
       "icons/icon.ico"
     ],
     "resources": ["resources"],
-    "publisher": "Clash Verge Smart",
+    "publisher": "Clash Verge Route",
     "externalBin": ["sidecar/verge-mihomo", "sidecar/verge-mihomo-alpha"],
     "copyright": "GNU General Public License v3.0",
     "category": "DeveloperTool",
-    "shortDescription": "Clash Verge Smart",
+    "shortDescription": "Clash Verge Route",
     "createUpdaterArtifacts": false
   },
   "build": {
@@ -26,7 +26,7 @@
     "devUrl": "http://localhost:3000/",
     "removeUnusedCommands": true
   },
-  "productName": "Clash Verge Smart",
+  "productName": "Clash Verge Route",
   "identifier": "io.github.clash-verge-rev.clash-verge-smart",
   "plugins": {
     "updater": {
@@ -38,7 +38,12 @@
     },
     "deep-link": {
       "desktop": {
-        "schemes": ["clash-smart", "clash-verge-smart"]
+        "schemes": [
+          "clash-route",
+          "clash-smart",
+          "clash-verge-route",
+          "clash-verge-smart"
+        ]
       }
     }
   },

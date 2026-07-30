@@ -14,20 +14,28 @@ import { useMemo } from 'react'
 import { useConnectionData } from '@/hooks/use-connection-data'
 import { useVisibility } from '@/hooks/use-visibility'
 
-export type RoutingMonitorRow = {
-  host: string
-  proxy: string
-  rule?: string
-  count: number
-  process?: string
-  startTime: number
-}
-
 type RoutingMonitorProps = {
   compact?: boolean
+  customRules?: ISmartRoutingCustomRule[]
   enabled?: boolean
-  maxRows?: number
   onPopout?: () => void
+}
+
+type RuleTarget = {
+  key: string
+  label: string
+  matchValue: string
+  originalValue: string
+  policy: string
+  type: 'domain' | 'process'
+}
+
+type RoutingMonitorRow = RuleTarget & {
+  active: boolean
+  count: number
+  hit?: string
+  proxy: string
+  startTime: number
 }
 
 const DIRECT_POLICIES = new Set(['DIRECT', 'REJECT'])
@@ -45,16 +53,28 @@ function trimHost(value: string) {
     .toLowerCase()
 }
 
-function isPrivateHost(host: string) {
-  if (!host || host === 'localhost' || host === '::1') return true
-  if (host.startsWith('127.') || host.startsWith('10.')) return true
-  if (host.startsWith('192.168.')) return true
-  const match172 = host.match(/^172\.(\d+)\./)
-  if (match172) {
-    const second = Number(match172[1])
-    if (second >= 16 && second <= 31) return true
+function normalizeDomain(value: string) {
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+
+  try {
+    const url = trimmed.includes('://')
+      ? new URL(trimmed)
+      : new URL(`https://${trimmed}`)
+    return trimHost(url.hostname.replace(/^\*\./, ''))
+  } catch {
+    return trimHost(trimmed.replace(/^\*\./, '').split('/')[0] || '')
   }
-  return false
+}
+
+function normalizeProcessName(value: string) {
+  return value
+    .trim()
+    .replace(/^["']|["']$/g, '')
+    .split(/[\\/]/)
+    .pop()
+    ?.trim()
+    .toLowerCase()
 }
 
 function getConnectionHost(connection: IConnectionsItem) {
@@ -65,45 +85,92 @@ function getConnectionHost(connection: IConnectionsItem) {
 function getConnectionProxy(connection: IConnectionsItem) {
   const chain = connection.chains?.filter(Boolean) ?? []
   if (!chain.length) return connection.rule || '-'
-  const last = chain[chain.length - 1]
-  return DIRECT_POLICIES.has(last) ? last : last
+  return chain[chain.length - 1]
 }
 
-function buildRoutingRows(connections: IConnectionsItem[]) {
-  const rowMap = new Map<string, RoutingMonitorRow>()
+function getConnectionProcessNames(connection: IConnectionsItem) {
+  const { process, processPath } = connection.metadata
+  return [process, processPath]
+    .map((value) => normalizeProcessName(value || ''))
+    .filter((value): value is string => Boolean(value))
+}
 
-  for (const connection of connections) {
-    const host = getConnectionHost(connection)
-    if (isPrivateHost(host)) continue
+function domainMatches(host: string, domain: string) {
+  return host === domain || host.endsWith(`.${domain}`)
+}
 
-    const startTime = parseStartTime(connection.start)
-    const previous = rowMap.get(host)
-    const next: RoutingMonitorRow = {
-      host,
-      proxy: getConnectionProxy(connection),
-      rule: connection.rulePayload || connection.rule,
-      count: (previous?.count ?? 0) + 1,
-      process: connection.metadata.process,
-      startTime: Math.max(previous?.startTime ?? 0, startTime),
-    }
-
-    if (!previous || startTime >= previous.startTime) {
-      rowMap.set(host, next)
-    } else {
-      rowMap.set(host, {
-        ...previous,
-        count: next.count,
-      })
-    }
+function ruleMatchesConnection(rule: RuleTarget, connection: IConnectionsItem) {
+  if (rule.type === 'process') {
+    return getConnectionProcessNames(connection).includes(rule.matchValue)
   }
 
-  return Array.from(rowMap.values()).sort((a, b) => b.startTime - a.startTime)
+  const host = getConnectionHost(connection)
+  return Boolean(
+    host && rule.matchValue && domainMatches(host, rule.matchValue),
+  )
+}
+
+function normalizeRuleTargets(customRules: ISmartRoutingCustomRule[] = []) {
+  return customRules
+    .map((rule, index): RuleTarget | null => {
+      if (rule.enabled === false) return null
+
+      const originalValue = `${rule.value ?? ''}`.trim()
+      if (!originalValue) return null
+
+      const type = rule.type === 'process' ? 'process' : 'domain'
+      const matchValue =
+        type === 'process'
+          ? normalizeProcessName(originalValue)
+          : normalizeDomain(originalValue)
+      if (!matchValue) return null
+
+      return {
+        key: `${index}:${type}:${matchValue}`,
+        label: type === 'process' ? matchValue : matchValue,
+        matchValue,
+        originalValue,
+        policy: `${rule.policy ?? ''}`.trim() || '-',
+        type,
+      }
+    })
+    .filter((rule): rule is RuleTarget => Boolean(rule))
+}
+
+function buildRoutingRows(
+  targets: RuleTarget[],
+  connections: IConnectionsItem[],
+) {
+  return targets.map((target): RoutingMonitorRow => {
+    const matched = connections.filter((connection) =>
+      ruleMatchesConnection(target, connection),
+    )
+    const latest = matched.reduce<IConnectionsItem | null>((current, item) => {
+      if (!current) return item
+      return parseStartTime(item.start) >= parseStartTime(current.start)
+        ? item
+        : current
+    }, null)
+
+    return {
+      ...target,
+      active: matched.length > 0,
+      count: matched.length,
+      hit: latest
+        ? target.type === 'process'
+          ? latest.metadata.processPath || latest.metadata.process
+          : getConnectionHost(latest)
+        : undefined,
+      proxy: latest ? getConnectionProxy(latest) : '暂无连接',
+      startTime: parseStartTime(latest?.start),
+    }
+  })
 }
 
 export const RoutingMonitor = ({
   compact = false,
+  customRules = [],
   enabled = true,
-  maxRows = compact ? 8 : 80,
   onPopout,
 }: RoutingMonitorProps) => {
   const visible = useVisibility()
@@ -111,10 +178,15 @@ export const RoutingMonitor = ({
     response: { data },
   } = useConnectionData({ enabled: enabled && visible })
 
-  const rows = useMemo(
-    () => buildRoutingRows(data.activeConnections).slice(0, maxRows),
-    [data.activeConnections, maxRows],
+  const targets = useMemo(
+    () => normalizeRuleTargets(customRules),
+    [customRules],
   )
+  const rows = useMemo(
+    () => buildRoutingRows(targets, data.activeConnections),
+    [data.activeConnections, targets],
+  )
+  const activeCount = rows.filter((row) => row.active).length
 
   return (
     <Paper
@@ -136,12 +208,12 @@ export const RoutingMonitor = ({
           py: 1,
         }}
       >
-        <Box>
+        <Box sx={{ minWidth: 0 }}>
           <Typography sx={{ fontSize: 14, fontWeight: 700 }}>
             实时走向
           </Typography>
           <Typography sx={{ color: 'text.secondary', fontSize: 12 }}>
-            当前活跃连接 {data.activeConnections.length} 条
+            已配置 {targets.length} 条，当前命中 {activeCount} 条
           </Typography>
         </Box>
         {onPopout && (
@@ -166,19 +238,19 @@ export const RoutingMonitor = ({
             textAlign: 'center',
           }}
         >
-          暂无正在通过代理的站点连接
+          先在单独规则里添加网站或 EXE
         </Box>
       ) : (
         <List
           disablePadding
           sx={{
-            maxHeight: compact ? 260 : 'calc(100vh - 76px)',
-            overflow: 'auto',
+            maxHeight: compact ? undefined : 'calc(100vh - 76px)',
+            overflow: compact ? 'visible' : 'auto',
           }}
         >
           {rows.map((row) => (
             <ListItem
-              key={row.host}
+              key={row.key}
               divider
               sx={{
                 alignItems: 'center',
@@ -190,60 +262,59 @@ export const RoutingMonitor = ({
               }}
             >
               <Box sx={{ minWidth: 0 }}>
+                <Stack
+                  direction="row"
+                  spacing={0.75}
+                  sx={{ alignItems: 'center', minWidth: 0 }}
+                >
+                  <Chip
+                    size="small"
+                    label={row.type === 'process' ? 'EXE' : '网站'}
+                    variant="outlined"
+                    sx={{ flexShrink: 0, height: 22 }}
+                  />
+                  <Typography
+                    title={row.originalValue}
+                    sx={{
+                      fontSize: 13,
+                      fontWeight: 600,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {row.label}
+                  </Typography>
+                </Stack>
                 <Typography
-                  title={row.host}
+                  title={row.hit || row.policy}
                   sx={{
-                    fontSize: 13,
-                    fontWeight: 600,
+                    color: 'text.secondary',
+                    fontSize: 11,
+                    mt: 0.5,
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     whiteSpace: 'nowrap',
                   }}
                 >
-                  {row.host}
+                  {row.hit
+                    ? `命中 ${row.hit}${row.count > 1 ? ` x${row.count}` : ''}`
+                    : `策略 ${row.policy}`}
                 </Typography>
-                {(row.rule || row.process || row.count > 1) && (
-                  <Stack
-                    direction="row"
-                    spacing={0.75}
-                    sx={{
-                      alignItems: 'center',
-                      color: 'text.secondary',
-                      mt: 0.5,
-                      minWidth: 0,
-                    }}
-                  >
-                    {row.rule && (
-                      <Typography
-                        title={row.rule}
-                        sx={{
-                          fontSize: 11,
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {row.rule}
-                      </Typography>
-                    )}
-                    {row.process && (
-                      <Typography sx={{ flexShrink: 0, fontSize: 11 }}>
-                        {row.process}
-                      </Typography>
-                    )}
-                    {row.count > 1 && (
-                      <Typography sx={{ flexShrink: 0, fontSize: 11 }}>
-                        x{row.count}
-                      </Typography>
-                    )}
-                  </Stack>
-                )}
               </Box>
               <Chip
                 size="small"
                 label={row.proxy}
-                color={DIRECT_POLICIES.has(row.proxy) ? 'default' : 'primary'}
-                variant={DIRECT_POLICIES.has(row.proxy) ? 'outlined' : 'filled'}
+                color={
+                  !row.active || DIRECT_POLICIES.has(row.proxy)
+                    ? 'default'
+                    : 'primary'
+                }
+                variant={
+                  !row.active || DIRECT_POLICIES.has(row.proxy)
+                    ? 'outlined'
+                    : 'filled'
+                }
                 sx={{
                   maxWidth: compact ? 160 : 180,
                   '& .MuiChip-label': {

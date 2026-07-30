@@ -5,19 +5,12 @@ use crate::module::lightweight;
 use crate::process::AsyncHandler;
 use crate::singleton;
 use crate::utils::window_manager::WindowManager;
-use crate::{
-    Type, cmd,
-    config::Config,
-    feat, logging,
-    module::lightweight::is_in_lightweight_mode,
-    utils::{dirs::find_target_icons, help},
-};
+use crate::{Type, cmd, config::Config, feat, logging, module::lightweight::is_in_lightweight_mode, utils::help};
 use clash_verge_limiter::{Limiter, SystemClock, SystemLimiter};
 use clash_verge_logging::logging_error;
 use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 use tauri_plugin_clash_verge_sysinfo::is_current_app_handle_admin;
 use tauri_plugin_mihomo::models::Proxies;
-use tokio::fs;
 
 use super::handle;
 use anyhow::Result;
@@ -52,9 +45,8 @@ struct TrayMenuOptions {
 struct TrayState {}
 
 enum IconKind {
-    Common,
-    SysProxy,
-    Tun,
+    Off,
+    On,
 }
 
 pub struct Tray {
@@ -67,30 +59,15 @@ impl TrayState {
     async fn get_tray_icon(verge: &IVerge) -> (bool, Cow<'_, [u8]>) {
         let tun_mode = verge.enable_tun_mode.unwrap_or(false);
         let system_mode = verge.enable_system_proxy.unwrap_or(false);
-        let kind = if tun_mode {
-            IconKind::Tun
-        } else if system_mode {
-            IconKind::SysProxy
+        let kind = if tun_mode || system_mode {
+            IconKind::On
         } else {
-            IconKind::Common
+            IconKind::Off
         };
         Self::load_icon(verge, kind).await
     }
 
     async fn load_icon(verge: &IVerge, kind: IconKind) -> (bool, Cow<'_, [u8]>) {
-        let (custom_enabled, icon_name) = match kind {
-            IconKind::Common => (verge.common_tray_icon.unwrap_or(false), "common"),
-            IconKind::SysProxy => (verge.sysproxy_tray_icon.unwrap_or(false), "sysproxy"),
-            IconKind::Tun => (verge.tun_tray_icon.unwrap_or(false), "tun"),
-        };
-
-        if custom_enabled
-            && let Ok(Some(path)) = find_target_icons(icon_name)
-            && let Ok(data) = fs::read(path).await
-        {
-            return (true, Cow::Owned(data));
-        }
-
         Self::default_icon(verge, kind)
     }
 
@@ -103,11 +80,8 @@ impl TrayState {
                 return (
                     false,
                     match kind {
-                        IconKind::Common => Cow::Borrowed(include_bytes!("../../../icons/tray-icon-mono.ico")),
-                        IconKind::SysProxy => {
-                            Cow::Borrowed(include_bytes!("../../../icons/tray-icon-sys-mono-new.ico"))
-                        }
-                        IconKind::Tun => Cow::Borrowed(include_bytes!("../../../icons/tray-icon-tun-mono-new.ico")),
+                        IconKind::Off => Cow::Borrowed(include_bytes!("../../../icons/off.png")),
+                        IconKind::On => Cow::Borrowed(include_bytes!("../../../icons/icon.png")),
                     },
                 );
             }
@@ -119,9 +93,8 @@ impl TrayState {
         (
             false,
             match kind {
-                IconKind::Common => Cow::Borrowed(include_bytes!("../../../icons/tray-icon.ico")),
-                IconKind::SysProxy => Cow::Borrowed(include_bytes!("../../../icons/tray-icon-sys.ico")),
-                IconKind::Tun => Cow::Borrowed(include_bytes!("../../../icons/tray-icon-tun.ico")),
+                IconKind::Off => Cow::Borrowed(include_bytes!("../../../icons/off.png")),
+                IconKind::On => Cow::Borrowed(include_bytes!("../../../icons/icon.png")),
             },
         )
     }
@@ -324,7 +297,7 @@ impl Tray {
         );
 
         let tooltip = format!(
-            "Clash Verge {}\n{}: {}\n{}: {}\n{}: {}",
+            "Clash Verge Route {}\n{}: {}\n{}: {}\n{}: {}",
             reassembled_version,
             sys_proxy_text,
             switch_str(system_proxy),
