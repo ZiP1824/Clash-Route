@@ -20,11 +20,25 @@ import {
   ContentPasteRounded,
   DeleteRounded,
   IndeterminateCheckBoxRounded,
+  LinkRounded,
   LocalFireDepartmentRounded,
   RefreshRounded,
   TextSnippetOutlined,
 } from '@mui/icons-material'
-import { Box, Button, Divider, Grid, IconButton, Stack } from '@mui/material'
+import {
+  Box,
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
+  Grid,
+  IconButton,
+  Stack,
+  TextField,
+  Typography,
+} from '@mui/material'
 import { listen, TauriEvent } from '@tauri-apps/api/event'
 import { readText } from '@tauri-apps/plugin-clipboard-manager'
 import { readTextFile } from '@tauri-apps/plugin-fs'
@@ -34,6 +48,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useLocation } from 'react-router'
 import { closeAllConnections } from 'tauri-plugin-mihomo-api'
+import yaml from 'js-yaml'
 
 import {
   BasePage,
@@ -72,6 +87,7 @@ import {
   useThemeMode,
 } from '@/services/states'
 import { debugLog } from '@/utils/debug'
+import parseUri from '@/utils/uri-parser'
 
 // 与 src-tauri/src/main.rs 的 worker_limit 上限(8)保持一致，避免前后端更新风暴不对齐
 const PROFILE_UPDATE_WORKER_LIMIT = 8
@@ -126,6 +142,74 @@ const debugProfileSwitch = (action: string, profile: string, extra?: any) => {
   debugLog(`[Profile-Debug][${timestamp}] ${action}: ${profile}`, extra || '')
 }
 
+function decodeNodeLinksInput(value: string) {
+  const trimmed = value.trim()
+  if (trimmed.includes('://')) return trimmed
+
+  try {
+    const decoded = atob(trimmed)
+    return decoded.includes('://') ? decoded : trimmed
+  } catch {
+    return trimmed
+  }
+}
+
+function uniqueProxyName(name: string, usedNames: Set<string>) {
+  const baseName = name.trim() || 'Manual Node'
+  if (!usedNames.has(baseName)) {
+    usedNames.add(baseName)
+    return baseName
+  }
+
+  let index = 2
+  while (usedNames.has(`${baseName}-${index}`)) {
+    index += 1
+  }
+  const nextName = `${baseName}-${index}`
+  usedNames.add(nextName)
+  return nextName
+}
+
+function parseNodeLinks(value: string) {
+  const decoded = decodeNodeLinksInput(value)
+  const lines = decoded
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+  const proxies: IProxyConfig[] = []
+  const usedNames = new Set<string>()
+
+  lines.forEach((line) => {
+    try {
+      const proxy = parseUri(line)
+      proxy.name = uniqueProxyName(proxy.name, usedNames)
+      proxies.push(proxy)
+    } catch (error) {
+      console.warn('[Profiles] failed to parse node link', line, error)
+    }
+  })
+
+  return proxies
+}
+
+function buildManualNodeProfile(name: string, proxies: IProxyConfig[]) {
+  const groupName = name.trim() || '手动节点'
+  return yaml.dump(
+    {
+      proxies,
+      'proxy-groups': [
+        {
+          name: groupName,
+          type: 'select',
+          proxies: proxies.map((proxy) => proxy.name),
+        },
+      ],
+      rules: [`MATCH,${groupName}`],
+    },
+    { forceQuotes: true },
+  )
+}
+
 const ProfilePage = () => {
   const { t } = useTranslation()
   const location = useLocation()
@@ -138,6 +222,10 @@ const ProfilePage = () => {
     string | null
   >(null)
   const [loading, setLoading] = useState(false)
+  const [nodeLinkOpen, setNodeLinkOpen] = useState(false)
+  const [nodeLinkName, setNodeLinkName] = useState('手动节点')
+  const [nodeLinkText, setNodeLinkText] = useState('')
+  const [nodeLinkLoading, setNodeLinkLoading] = useState(false)
   const [timerUpdateRevisions, setTimerUpdateRevisions] = useState<
     Map<string, number>
   >(() => new Map())
@@ -372,6 +460,41 @@ const ProfilePage = () => {
       )
     }
   }
+
+  const onImportNodeLinks = useLockFn(async () => {
+    const profileName = nodeLinkName.trim() || '手动节点'
+    const proxies = parseNodeLinks(nodeLinkText)
+
+    if (!proxies.length) {
+      showNotice.error('没有解析到可用节点链接')
+      return
+    }
+
+    setNodeLinkLoading(true)
+    try {
+      const item = {
+        type: 'local',
+        name: profileName,
+        desc: `手动导入 ${proxies.length} 个节点`,
+        url: '',
+        option: {
+          with_proxy: false,
+          self_proxy: false,
+        },
+      } as IProfileItem
+
+      await createProfile(item, buildManualNodeProfile(profileName, proxies))
+      setNodeLinkOpen(false)
+      setNodeLinkText('')
+      setNodeLinkName('手动节点')
+      showNotice.success(`已导入 ${proxies.length} 个节点`)
+      await performRobustRefresh()
+    } catch (error) {
+      showNotice.error(error)
+    } finally {
+      setNodeLinkLoading(false)
+    }
+  })
 
   const onDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event
@@ -959,6 +1082,15 @@ const ProfilePage = () => {
           {t('profiles.page.actions.import')}
         </Button>
         <Button
+          variant="outlined"
+          size="small"
+          startIcon={<LinkRounded />}
+          sx={{ borderRadius: '6px', flexShrink: 0 }}
+          onClick={() => setNodeLinkOpen(true)}
+        >
+          节点链接
+        </Button>
+        <Button
           variant="contained"
           size="small"
           sx={{ borderRadius: '6px' }}
@@ -967,6 +1099,56 @@ const ProfilePage = () => {
           {t('shared.actions.new')}
         </Button>
       </Stack>
+
+      <Dialog
+        fullWidth
+        maxWidth="sm"
+        open={nodeLinkOpen}
+        onClose={() => {
+          if (!nodeLinkLoading) setNodeLinkOpen(false)
+        }}
+      >
+        <DialogTitle>添加节点链接</DialogTitle>
+        <DialogContent>
+          <Stack spacing={1.5} sx={{ pt: 0.5 }}>
+            <TextField
+              fullWidth
+              label="订阅名称"
+              size="small"
+              value={nodeLinkName}
+              onChange={(event) => setNodeLinkName(event.target.value)}
+            />
+            <TextField
+              fullWidth
+              multiline
+              minRows={8}
+              label="节点链接"
+              placeholder="一行一个节点链接，也可以粘贴 base64 节点订阅内容"
+              value={nodeLinkText}
+              onChange={(event) => setNodeLinkText(event.target.value)}
+            />
+            <Typography sx={{ color: 'text.secondary', fontSize: 12 }}>
+              支持 ss、ssr、vmess、vless、trojan、hysteria、hysteria2、tuic、wireguard、http、socks 等链接。
+            </Typography>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            disabled={nodeLinkLoading}
+            onClick={() => setNodeLinkOpen(false)}
+          >
+            取消
+          </Button>
+          <Button
+            disabled={!nodeLinkText.trim()}
+            loading={nodeLinkLoading}
+            variant="contained"
+            onClick={onImportNodeLinks}
+          >
+            导入
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <DndContext
         sensors={sensors}

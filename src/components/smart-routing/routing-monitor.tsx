@@ -1,11 +1,8 @@
-import OpenInNewRoundedIcon from '@mui/icons-material/OpenInNewRounded'
 import {
   Box,
-  Button,
   Chip,
   List,
   ListItem,
-  Paper,
   Stack,
   Typography,
 } from '@mui/material'
@@ -18,7 +15,6 @@ type RoutingMonitorProps = {
   compact?: boolean
   customRules?: ISmartRoutingCustomRule[]
   enabled?: boolean
-  onPopout?: () => void
 }
 
 type RuleTarget = {
@@ -171,7 +167,6 @@ export const RoutingMonitor = ({
   compact = false,
   customRules = [],
   enabled = true,
-  onPopout,
 }: RoutingMonitorProps) => {
   const visible = useVisibility()
   const {
@@ -189,12 +184,9 @@ export const RoutingMonitor = ({
   const activeCount = rows.filter((row) => row.active).length
 
   return (
-    <Paper
-      elevation={0}
+    <Box
       sx={{
         bgcolor: 'background.paper',
-        border: (theme) => `1px solid ${theme.palette.divider}`,
-        borderRadius: 1,
         overflow: 'hidden',
       }}
     >
@@ -210,22 +202,15 @@ export const RoutingMonitor = ({
       >
         <Box sx={{ minWidth: 0 }}>
           <Typography sx={{ fontSize: 14, fontWeight: 700 }}>
-            实时走向
+            实时连接
           </Typography>
           <Typography sx={{ color: 'text.secondary', fontSize: 12 }}>
             已配置 {targets.length} 条，当前命中 {activeCount} 条
           </Typography>
         </Box>
-        {onPopout && (
-          <Button
-            size="small"
-            variant="outlined"
-            startIcon={<OpenInNewRoundedIcon />}
-            onClick={onPopout}
-          >
-            弹出显示
-          </Button>
-        )}
+        <Typography sx={{ flexShrink: 0, fontSize: 13, fontWeight: 700 }}>
+          连接节点
+        </Typography>
       </Stack>
 
       {rows.length === 0 ? (
@@ -251,9 +236,9 @@ export const RoutingMonitor = ({
           {rows.map((row) => (
             <ListItem
               key={row.key}
-              divider
               sx={{
                 alignItems: 'center',
+                borderBottom: (theme) => `1px solid ${theme.palette.divider}`,
                 display: 'grid',
                 gap: 1,
                 gridTemplateColumns: 'minmax(0, 1fr) auto',
@@ -327,6 +312,6 @@ export const RoutingMonitor = ({
           ))}
         </List>
       )}
-    </Paper>
+    </Box>
   )
 }

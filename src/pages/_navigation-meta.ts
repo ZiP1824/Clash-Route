@@ -14,7 +14,7 @@ export const navigationItems = {
   },
   rules: { label: 'layout.components.navigation.tabs.rules', path: '/rules' },
   smartRouting: {
-    label: '智能分流' as any,
+    label: '分流' as any,
     path: '/smart-routing',
   },
   logs: { label: 'layout.components.navigation.tabs.logs', path: '/logs' },

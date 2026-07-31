@@ -291,6 +291,9 @@ interface ISmartRoutingCustomRule {
   type?: 'domain' | 'process'
   value?: string
   policy?: string
+  chain_enabled?: boolean
+  chain_entry?: string
+  chain_exit?: string
 }
 
 interface ISmartRoutingConfig {

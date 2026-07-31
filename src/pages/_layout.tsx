@@ -352,7 +352,7 @@ const Layout = () => {
                 <Box
                   component="img"
                   src={routeIcon}
-                  alt="Clash Verge Route"
+                  alt="ZiP1824"
                   sx={{
                     height: 36,
                     width: 36,
@@ -371,7 +371,7 @@ const Layout = () => {
                     whiteSpace: 'nowrap',
                   }}
                 >
-                  Clash Verge Route
+                  ZiP1824
                 </Typography>
               </div>
               <UpdateButton className="the-newbtn" />

@@ -93,8 +93,8 @@ impl TrayState {
         (
             false,
             match kind {
-                IconKind::Off => Cow::Borrowed(include_bytes!("../../../icons/off.png")),
-                IconKind::On => Cow::Borrowed(include_bytes!("../../../icons/icon.png")),
+                IconKind::Off => Cow::Borrowed(include_bytes!("../../../icons/tray-icon-large-off.png")),
+                IconKind::On => Cow::Borrowed(include_bytes!("../../../icons/tray-icon-large.png")),
             },
         )
     }
@@ -297,7 +297,7 @@ impl Tray {
         );
 
         let tooltip = format!(
-            "Clash Verge Route {}\n{}: {}\n{}: {}\n{}: {}",
+            "Clash Route {}\n{}: {}\n{}: {}\n{}: {}",
             reassembled_version,
             sys_proxy_text,
             switch_str(system_proxy),

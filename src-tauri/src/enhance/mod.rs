@@ -12,7 +12,7 @@ use self::{
     merge::use_merge,
     script::use_script,
     seq::{SeqMap, use_seq},
-    smart_routing::apply_smart_routing,
+    smart_routing::{ProxyLibrary, apply_smart_routing},
     tun::use_tun,
 };
 use crate::utils::dirs;
@@ -55,6 +55,7 @@ struct ProfileItems {
     groups_item: ChainItem,
     global_merge: ChainItem,
     global_script: ChainItem,
+    proxy_library: ProxyLibrary,
     profile_name: String,
 }
 
@@ -91,6 +92,7 @@ impl Default for ProfileItems {
                 uid: "Script".into(),
                 data: ChainType::Script(tmpl::ITEM_SCRIPT.into()),
             },
+            proxy_library: ProxyLibrary::new(),
         }
     }
 }
@@ -101,6 +103,104 @@ async fn chain_item_or_default(item: Option<&PrfItem>, default_item: impl FnOnce
     } else {
         default_item()
     }
+}
+
+fn collect_proxy_names(config: &Mapping) -> HashSet<std::string::String> {
+    let mut names = HashSet::new();
+
+    if let Some(proxies) = config.get("proxies").and_then(Value::as_sequence) {
+        names.extend(proxies.iter().filter_map(|proxy| {
+            proxy
+                .as_mapping()
+                .and_then(|proxy| proxy.get("name"))
+                .and_then(Value::as_str)
+                .map(std::string::String::from)
+        }));
+    }
+
+    if let Some(groups) = config.get("proxy-groups").and_then(Value::as_sequence) {
+        names.extend(groups.iter().filter_map(|group| {
+            group
+                .as_mapping()
+                .and_then(|group| group.get("name"))
+                .and_then(Value::as_str)
+                .map(std::string::String::from)
+        }));
+    }
+
+    names
+}
+
+fn unique_proxy_alias(
+    source: &str,
+    name: &str,
+    used_names: &HashSet<std::string::String>,
+) -> std::string::String {
+    let base = format!("{source} / {name}");
+    if !used_names.contains(&base) {
+        return base;
+    }
+
+    let mut index = 2;
+    loop {
+        let candidate = format!("{base} ({index})");
+        if !used_names.contains(&candidate) {
+            return candidate;
+        }
+        index += 1;
+    }
+}
+
+async fn collect_profile_proxy_library(items: &[PrfItem], current_uid: &str, current_config: &Mapping) -> ProxyLibrary {
+    let mut library = ProxyLibrary::new();
+    let mut used_names = collect_proxy_names(current_config);
+    used_names.extend(["DIRECT".into(), "REJECT".into(), "REJECT-DROP".into(), "PASS".into()]);
+
+    for item in items {
+        if !matches!(item.itype.as_deref(), Some("local" | "remote")) {
+            continue;
+        }
+
+        let Ok(content) = item.read_file().await else {
+            continue;
+        };
+        let Ok(mapping) = serde_yaml_ng::from_str::<Mapping>(&content) else {
+            continue;
+        };
+        let Some(proxies) = mapping.get("proxies").and_then(Value::as_sequence) else {
+            continue;
+        };
+
+        for proxy in proxies {
+            let Some(proxy_map) = proxy.as_mapping() else {
+                continue;
+            };
+            let Some(name) = proxy_map.get("name").and_then(Value::as_str) else {
+                continue;
+            };
+            let name = name.trim();
+            if name.is_empty() {
+                continue;
+            }
+
+            library.entry(name.to_owned()).or_insert_with(|| proxy_map.clone());
+
+            let is_current = item.uid.as_deref() == Some(current_uid);
+            if is_current || !used_names.contains(name) {
+                used_names.insert(name.to_owned());
+                continue;
+            }
+
+            let source = item.name.as_deref().unwrap_or("订阅配置");
+            let alias = unique_proxy_alias(source, name, &used_names);
+            let mut aliased_proxy = proxy_map.clone();
+            aliased_proxy.insert(Value::from("name"), Value::from(alias.as_str()));
+            used_names.insert(alias.clone());
+            library.insert(alias, aliased_proxy);
+        }
+    }
+
+    library
 }
 
 async fn get_config_values() -> ConfigValues {
@@ -232,6 +332,9 @@ async fn collect_profile_items() -> Result<ProfileItems> {
         },),
     );
 
+    let all_items = profiles_arc.get_items().cloned().unwrap_or_default();
+    let proxy_library = collect_profile_proxy_library(&all_items, &current_profile_uid, &current).await;
+
     drop(profiles_arc);
 
     Ok(ProfileItems {
@@ -243,6 +346,7 @@ async fn collect_profile_items() -> Result<ProfileItems> {
         groups_item,
         global_merge,
         global_script,
+        proxy_library,
         profile_name: name,
     })
 }
@@ -716,6 +820,7 @@ pub async fn enhance() -> Result<(Mapping, HashSet<String>, HashMap<String, Resu
     let groups_item = profile.groups_item;
     let global_merge = profile.global_merge;
     let global_script = profile.global_script;
+    let proxy_library = profile.proxy_library;
     let profile_name = profile.profile_name;
 
     let result_map = HashMap::new();
@@ -741,7 +846,6 @@ pub async fn enhance() -> Result<(Mapping, HashSet<String>, HashMap<String, Resu
     let config = apply_builtin_scripts(config, clash_core, enable_builtin).await;
     let config = use_tun(config, enable_tun);
     let config = apply_dns_settings(config, enable_dns_settings).await;
-    let config = apply_smart_routing(config, smart_routing.as_ref());
 
     // 手动覆盖前锁定 app 权威字段。
     let control_plane = snapshot_control_plane(&config);
@@ -771,6 +875,7 @@ pub async fn enhance() -> Result<(Mapping, HashSet<String>, HashMap<String, Resu
     let config = enforce_control_plane(config, control_plane);
     let config = enforce_dns_ipv6(config, dns_ipv6);
     let config = ensure_lan_bind_address(config);
+    let config = apply_smart_routing(config, smart_routing.as_ref(), &proxy_library);
 
     let config = cleanup_proxy_groups(config);
     let config = use_sort(config);

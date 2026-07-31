@@ -134,6 +134,14 @@ export const navItems: NavigationItem[] = [
     Component: HomePage,
   },
   {
+    ...navigationItems.smartRouting,
+    icon: [
+      <RouteOutlinedIcon key="mui" />,
+      <ForkRightOutlinedIcon key="svg" />,
+    ],
+    ...createLazyRoute(() => import('./smart-routing')),
+  },
+  {
     ...navigationItems.proxies,
     icon: [<WifiOutlinedIcon key="mui" />, <ProxiesSvg key="svg" />],
     ...createLazyRoute(() => import('./proxies')),
@@ -152,14 +160,6 @@ export const navItems: NavigationItem[] = [
     ...navigationItems.rules,
     icon: [<ForkRightOutlinedIcon key="mui" />, <RulesSvg key="svg" />],
     ...createLazyRoute(() => import('./rules'), 'rules'),
-  },
-  {
-    ...navigationItems.smartRouting,
-    icon: [
-      <RouteOutlinedIcon key="mui" />,
-      <ForkRightOutlinedIcon key="svg" />,
-    ],
-    ...createLazyRoute(() => import('./smart-routing')),
   },
   {
     ...navigationItems.logs,

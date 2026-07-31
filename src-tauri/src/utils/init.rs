@@ -527,8 +527,8 @@ pub fn init_scheme() -> Result<()> {
     for scheme in ["clash-route", "clash-smart", "clash-verge-route", "clash-verge-smart"] {
         let base_key = format!("Software\\Classes\\{scheme}");
         let (clash, _) = hkcu.create_subkey(&base_key)?;
-        clash.set_value("", &"Clash Verge Route")?;
-        clash.set_value("URL Protocol", &"Clash Verge Route URL Scheme Protocol")?;
+        clash.set_value("", &"Clash Route")?;
+        clash.set_value("URL Protocol", &"Clash Route URL Scheme Protocol")?;
         let (default_icon, _) = hkcu.create_subkey(format!("{base_key}\\DefaultIcon"))?;
         default_icon.set_value("", &app_exe)?;
         let (command, _) = hkcu.create_subkey(format!("{base_key}\\Shell\\Open\\Command"))?;

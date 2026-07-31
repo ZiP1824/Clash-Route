@@ -1,7 +1,6 @@
 import {
   DnsOutlined,
-  HelpOutlineRounded,
-  HistoryEduOutlined,
+  RouteOutlined,
   RouterOutlined,
   SettingsOutlined,
   SpeedOutlined,
@@ -21,7 +20,6 @@ import {
   Skeleton,
   Tooltip,
 } from '@mui/material'
-import { useLockFn } from 'ahooks'
 import { Suspense, lazy, useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -32,9 +30,9 @@ import { EnhancedCard } from '@/components/home/enhanced-card'
 import { EnhancedTrafficStats } from '@/components/home/enhanced-traffic-stats'
 import { HomeProfileCard } from '@/components/home/home-profile-card'
 import { ProxyTunCard } from '@/components/home/proxy-tun-card'
+import { SmartRoutingCard } from '@/components/home/smart-routing-card'
 import { useProfiles } from '@/hooks/use-profiles'
 import { useVerge } from '@/hooks/use-verge'
-import { entry_lightweight_mode, openWebUrl } from '@/services/cmds'
 
 const LazyTestCard = lazy(() =>
   import('@/components/home/test-card').then((module) => ({
@@ -154,6 +152,15 @@ const HomeSettingsDialog = ({
           <FormControlLabel
             control={
               <Checkbox
+                checked={cards.routing || false}
+                onChange={() => handleToggle('routing')}
+              />
+            }
+            label="分流"
+          />
+          <FormControlLabel
+            control={
+              <Checkbox
                 checked={cards.traffic || false}
                 onChange={() => handleToggle('traffic')}
               />
@@ -228,6 +235,7 @@ const HomePage = () => {
       proxy: true,
       network: true,
       mode: true,
+      routing: true,
       traffic: true,
       clashinfo: true,
       systeminfo: true,
@@ -261,11 +269,6 @@ const HomePage = () => {
 
   const effectiveHomeCards = pendingLocalCards ?? remoteHomeCards
 
-  // 文档链接函数
-  const toGithubDoc = useLockFn(() => {
-    return openWebUrl('https://clash-verge-rev.github.io/index.html')
-  })
-
   // 新增：打开设置弹窗
   const openSettings = useCallback(() => {
     setSettingsOpen(true)
@@ -293,6 +296,7 @@ const HomePage = () => {
       renderCard('proxy', <CurrentProxyCard />),
       renderCard('network', <NetworkSettingsCard />),
       renderCard('mode', <ClashModeEnhancedCard />),
+      renderCard('routing', <SmartRoutingEnhancedCard />, 12),
     ],
     [current, mutateProfiles, renderCard],
   )
@@ -368,20 +372,6 @@ const HomePage = () => {
       contentStyle={{ padding: 2 }}
       header={
         <Box sx={{ display: 'flex', alignItems: 'center' }}>
-          <Tooltip title={t('home.page.tooltips.lightweightMode')} arrow>
-            <IconButton
-              onClick={async () => await entry_lightweight_mode()}
-              size="small"
-              color="inherit"
-            >
-              <HistoryEduOutlined />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title={t('home.page.tooltips.manual')} arrow>
-            <IconButton onClick={toGithubDoc} size="small" color="inherit">
-              <HelpOutlineRounded />
-            </IconButton>
-          </Tooltip>
           <Tooltip title={t('home.page.tooltips.settings')} arrow>
             <IconButton onClick={openSettings} size="small" color="inherit">
               <SettingsOutlined />
@@ -434,6 +424,19 @@ const ClashModeEnhancedCard = () => {
       action={null}
     >
       <ClashModeCard />
+    </EnhancedCard>
+  )
+}
+
+const SmartRoutingEnhancedCard = () => {
+  return (
+    <EnhancedCard
+      title="分流"
+      icon={<RouteOutlined />}
+      iconColor="success"
+      action={null}
+    >
+      <SmartRoutingCard />
     </EnhancedCard>
   )
 }
