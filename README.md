@@ -19,7 +19,7 @@
 | --- | --- |
 | ![分流总览](./docs/smart-routing-overview.png) | ![单条规则宽布局](./docs/smart-routing-rule-wide.png) |
 
-| 窄窗口布局 | 节点标签 |
+| 订阅新增手动加入节点 | 添加节点 |
 | --- | --- |
 | ![单条规则窄布局](./docs/smart-routing-rule-narrow.png) | ![节点标签](./docs/smart-routing-node-label.png) |
 
