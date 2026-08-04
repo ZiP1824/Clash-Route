@@ -1,5 +1,5 @@
 use super::CmdResult;
-use crate::{cmd::StringifyErr as _, config::Config, core::CoreManager, utils::yaml_emitter};
+use crate::{cmd::StringifyErr as _, config::Config, core::CoreManager, enhance, utils::yaml_emitter};
 use anyhow::{Context as _, anyhow};
 use clash_verge_logging::{Type, logging};
 use serde_yaml_ng::Mapping;
@@ -128,6 +128,35 @@ pub async fn update_proxy_chain_config_in_runtime(proxy_chain_config: Option<ser
             outcome
         ),
         Err(err) => logging!(error, Type::Core, "Failed to apply runtime proxy chain config: {}", err),
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn ensure_smart_routing_proxy_targets(proxy_names: Vec<std::string::String>) -> CmdResult<()> {
+    let proxy_targets = enhance::collect_smart_routing_proxy_targets(&proxy_names).await;
+    if proxy_targets.is_empty() {
+        return Ok(());
+    }
+
+    match CoreManager::global()
+        .update_runtime_config(|d| d.append_proxy_targets(proxy_targets))
+        .await
+    {
+        Ok(outcome) if outcome.is_valid() => {}
+        Ok(outcome) => logging!(
+            warn,
+            Type::Core,
+            "Failed to apply smart routing proxy targets: {}",
+            outcome
+        ),
+        Err(err) => logging!(
+            error,
+            Type::Core,
+            "Failed to apply smart routing proxy targets: {}",
+            err
+        ),
     }
 
     Ok(())

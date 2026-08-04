@@ -131,11 +131,7 @@ fn collect_proxy_names(config: &Mapping) -> HashSet<std::string::String> {
     names
 }
 
-fn unique_proxy_alias(
-    source: &str,
-    name: &str,
-    used_names: &HashSet<std::string::String>,
-) -> std::string::String {
+fn unique_proxy_alias(source: &str, name: &str, used_names: &HashSet<std::string::String>) -> std::string::String {
     let base = format!("{source} / {name}");
     if !used_names.contains(&base) {
         return base;
@@ -201,6 +197,33 @@ async fn collect_profile_proxy_library(items: &[PrfItem], current_uid: &str, cur
     }
 
     library
+}
+
+pub async fn collect_smart_routing_proxy_targets(targets: &[std::string::String]) -> Vec<Mapping> {
+    if targets.is_empty() {
+        return Vec::new();
+    }
+
+    let profiles = Config::profiles().await;
+    let profiles_arc = profiles.latest_arc();
+    drop(profiles);
+
+    let Some(current_uid) = profiles_arc.get_current().cloned() else {
+        return Vec::new();
+    };
+
+    let Ok(current_config) = profiles_arc.current_mapping().await else {
+        return Vec::new();
+    };
+
+    let items = profiles_arc.get_items().cloned().unwrap_or_default();
+    let library = collect_profile_proxy_library(&items, &current_uid, &current_config).await;
+    drop(profiles_arc);
+
+    targets
+        .iter()
+        .filter_map(|target| library.get(target.as_str()).cloned())
+        .collect()
 }
 
 async fn get_config_values() -> ConfigValues {

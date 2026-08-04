@@ -1,11 +1,4 @@
-import {
-  Box,
-  Chip,
-  List,
-  ListItem,
-  Stack,
-  Typography,
-} from '@mui/material'
+import { Box, Chip, List, ListItem, Stack, Typography } from '@mui/material'
 import { useMemo } from 'react'
 
 import { useConnectionData } from '@/hooks/use-connection-data'
@@ -195,6 +188,8 @@ export const RoutingMonitor = ({
         sx={{
           alignItems: 'center',
           borderBottom: (theme) => `1px solid ${theme.palette.divider}`,
+          flexWrap: 'wrap',
+          gap: 0.75,
           justifyContent: 'space-between',
           px: 2,
           py: 1,
@@ -301,7 +296,7 @@ export const RoutingMonitor = ({
                     : 'filled'
                 }
                 sx={{
-                  maxWidth: compact ? 160 : 180,
+                  maxWidth: { xs: 112, sm: compact ? 160 : 180 },
                   '& .MuiChip-label': {
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',

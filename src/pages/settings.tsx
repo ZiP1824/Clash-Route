@@ -1,5 +1,6 @@
 import { GitHub } from '@mui/icons-material'
 import { Box, ButtonGroup, IconButton, Grid, Typography } from '@mui/material'
+import { version } from '@root/package.json'
 import { useLockFn } from 'ahooks'
 import { useTranslation } from 'react-i18next'
 
@@ -25,7 +26,7 @@ const AboutDevelopmentNotice = () => {
       <Typography sx={{ fontSize: 13, lineHeight: 1.8 }}>
         Clash Route
         <br />
-        版本：v1.0.3
+        版本：v{version}
         <br />
         开发人：ZiP1824
         <IconButton
@@ -38,7 +39,10 @@ const AboutDevelopmentNotice = () => {
           <GitHub fontSize="inherit" />
         </IconButton>
         <br />
-        Clash Route 是基于 Clash Verge Rev 二次开发的非官方开源客户端，专注于可视化智能分流和多节点路由管理。本项目与 Clash Verge Rev 官方项目及其维护团队不存在隶属、授权、赞助或官方维护关系。
+        Clash Route 是基于 Clash Verge Rev
+        二次开发的非官方开源客户端，专注于可视化智能分流和多节点路由管理。本项目与
+        Clash Verge Rev
+        官方项目及其维护团队不存在隶属、授权、赞助或官方维护关系。
         <br />
         基于：Clash Verge Rev
         <br />

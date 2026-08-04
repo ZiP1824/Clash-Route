@@ -1,9 +1,8 @@
-import AddRoundedIcon from '@mui/icons-material/AddRounded'
+﻿import AddRoundedIcon from '@mui/icons-material/AddRounded'
 import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded'
 import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined'
 import FileOpenOutlinedIcon from '@mui/icons-material/FileOpenOutlined'
 import FileUploadOutlinedIcon from '@mui/icons-material/FileUploadOutlined'
-import LinkRoundedIcon from '@mui/icons-material/LinkRounded'
 import SaveOutlinedIcon from '@mui/icons-material/SaveOutlined'
 import {
   Box,
@@ -20,7 +19,13 @@ import {
   save as saveDialog,
 } from '@tauri-apps/plugin-dialog'
 import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs'
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react'
 import {
   closeAllConnections,
   closeConnection,
@@ -168,64 +173,39 @@ function normalizeRuleTarget(rule: ISmartRoutingCustomRule): RuleTarget | null {
   return matchValue ? { matchValue, type } : null
 }
 
-function stringifyCustomRule(rule: ISmartRoutingCustomRule) {
-  return JSON.stringify({
+function toPersistedRule(
+  rule: ISmartRoutingCustomRule,
+  fallbackPolicy: string,
+): ISmartRoutingCustomRule | null {
+  const value = rule.value?.trim() ?? ''
+  if (!value) return null
+
+  return {
     enabled: rule.enabled ?? true,
     type: rule.type ?? 'domain',
-    value: `${rule.value ?? ''}`.trim(),
-    policy: `${rule.policy ?? ''}`.trim(),
+    value,
+    policy: rule.policy?.trim() || fallbackPolicy,
     chain_enabled: Boolean(rule.chain_enabled),
-    chain_entry: `${rule.chain_entry ?? ''}`.trim(),
-    chain_exit: `${rule.chain_exit ?? ''}`.trim(),
-  })
-}
-
-function collectChangedRuleTargets(
-  previousRules: ISmartRoutingCustomRule[] = [],
-  nextRules: ISmartRoutingCustomRule[] = [],
-) {
-  const previousMap = new Map(
-    previousRules.map((rule) => [customRuleKey(rule), rule]),
-  )
-  const nextMap = new Map(nextRules.map((rule) => [customRuleKey(rule), rule]))
-  const targets = new Map<string, RuleTarget>()
-
-  const addTarget = (rule?: ISmartRoutingCustomRule) => {
-    if (!rule) return
-    const target = normalizeRuleTarget(rule)
-    if (target) targets.set(`${target.type}:${target.matchValue}`, target)
+    chain_entry: rule.chain_entry?.trim() ?? '',
+    chain_exit: rule.chain_exit?.trim() ?? '',
   }
-
-  previousMap.forEach((previousRule, key) => {
-    const nextRule = nextMap.get(key)
-    if (!nextRule || stringifyCustomRule(previousRule) !== stringifyCustomRule(nextRule)) {
-      addTarget(previousRule)
-      addTarget(nextRule)
-    }
-  })
-
-  nextMap.forEach((nextRule, key) => {
-    if (!previousMap.has(key)) {
-      addTarget(nextRule)
-    }
-  })
-
-  return Array.from(targets.values())
 }
 
-function hasBroadSmartRoutingChange(
-  previous: SmartRoutingDraft,
-  next: ISmartRoutingConfig,
-) {
-  return (
-    previous.enabled !== next.enabled ||
-    previous.proxy_policy !== next.proxy_policy ||
-    previous.direct_policy !== next.direct_policy ||
-    previous.reject_policy !== next.reject_policy ||
-    previous.final_policy !== next.final_policy ||
-    previous.append_match !== next.append_match ||
-    JSON.stringify(previous.categories) !== JSON.stringify(next.categories)
-  )
+function buildSmartRoutingConfig(
+  draft: SmartRoutingDraft,
+): ISmartRoutingConfig {
+  return {
+    enabled: draft.enabled,
+    proxy_policy: draft.proxy_policy,
+    direct_policy: draft.direct_policy,
+    reject_policy: draft.reject_policy,
+    final_policy: draft.final_policy,
+    append_match: draft.append_match,
+    categories: draft.categories,
+    custom_rules: draft.custom_rules
+      .map((rule) => toPersistedRule(rule, draft.proxy_policy))
+      .filter((rule): rule is ISmartRoutingCustomRule => Boolean(rule)),
+  }
 }
 
 function getConnectionHost(connection: IConnectionsItem) {
@@ -261,7 +241,9 @@ async function closeConnectionsForRuleTargets(targets: RuleTarget[]) {
 
     ;(connections ?? []).forEach((connection) => {
       if (
-        targets.some((target) => ruleTargetMatchesConnection(target, connection))
+        targets.some((target) =>
+          ruleTargetMatchesConnection(target, connection),
+        )
       ) {
         ids.add(connection.id)
       }
@@ -299,10 +281,12 @@ const SectionCard = ({
   title,
   action,
   children,
+  contentSx,
 }: {
   title: string
   action?: ReactNode
   children: ReactNode
+  contentSx?: Record<string, unknown>
 }) => (
   <Box
     sx={{
@@ -318,6 +302,8 @@ const SectionCard = ({
         alignItems: 'center',
         borderBottom: (theme) => `1px solid ${theme.palette.divider}`,
         display: 'flex',
+        flexWrap: 'wrap',
+        gap: 1,
         justifyContent: 'space-between',
         px: 2,
         py: 1.25,
@@ -326,7 +312,7 @@ const SectionCard = ({
       <Typography sx={{ fontSize: 16, fontWeight: 700 }}>{title}</Typography>
       {action}
     </Box>
-    <Box sx={{ p: 2 }}>{children}</Box>
+    <Box sx={{ p: 2, ...contentSx }}>{children}</Box>
   </Box>
 )
 
@@ -344,10 +330,18 @@ const SettingRow = ({
       gap: 2,
       gridTemplateColumns: { xs: '1fr', sm: '180px minmax(0, 1fr)' },
       minHeight: 46,
+      width: '100%',
     }}
   >
     <Typography sx={{ fontSize: 14, fontWeight: 500 }}>{label}</Typography>
-    <Box sx={{ display: 'flex', justifyContent: { xs: 'stretch', sm: 'end' } }}>
+    <Box
+      sx={{
+        display: 'flex',
+        justifyContent: { xs: 'stretch', sm: 'end' },
+        minWidth: 0,
+        width: '100%',
+      }}
+    >
       {children}
     </Box>
   </Box>
@@ -357,9 +351,7 @@ const SmartRoutingPage = () => {
   const { verge, patchVerge, mutateVerge } = useVerge()
   const [policyTargets, setPolicyTargets] = useState<string[]>([])
   const [nodeTargets, setNodeTargets] = useState<string[]>([])
-  const [policySources, setPolicySources] = useState<Record<string, string>>(
-    {},
-  )
+  const [policySources, setPolicySources] = useState<Record<string, string>>({})
   const [nodeSources, setNodeSources] = useState<Record<string, string>>({})
   const [draft, setDraft] = useState<SmartRoutingDraft>(() =>
     normalizeSmartRouting(verge?.smart_routing),
@@ -566,7 +558,7 @@ const SmartRoutingPage = () => {
       })
 
       showNotice.success(
-        `已导入 ${importedRules.length} 条单独规则，请保存应用`,
+        '已导入 ' + importedRules.length + ' 条单独规则，请保存应用',
       )
     } catch (error) {
       console.error(error)
@@ -591,53 +583,71 @@ const SmartRoutingPage = () => {
   )
 
   const saveConfig = useCallback(async () => {
-    const previousSmartRouting = normalizeSmartRouting(verge?.smart_routing)
-    const smart_routing: ISmartRoutingConfig = {
-      enabled: draft.enabled,
-      proxy_policy: draft.proxy_policy,
-      direct_policy: draft.direct_policy,
-      reject_policy: draft.reject_policy,
-      final_policy: draft.final_policy,
-      append_match: draft.append_match,
-      categories: draft.categories,
-      custom_rules: draft.custom_rules
-        .map((rule) => ({
-          enabled: rule.enabled ?? true,
-          type: rule.type ?? 'domain',
-          value: rule.value?.trim() ?? '',
-          policy: rule.policy?.trim() || draft.proxy_policy,
-          chain_enabled: Boolean(rule.chain_enabled),
-          chain_entry: rule.chain_entry?.trim() ?? '',
-          chain_exit: rule.chain_exit?.trim() ?? '',
-        }))
-        .filter((rule) => rule.value),
-    }
+    const smart_routing = buildSmartRoutingConfig(draft)
 
     mutateVerge({ ...verge, smart_routing }, false)
     await patchVerge({ smart_routing })
 
     const applied = await enhanceProfiles()
     if (applied) {
-      if (hasBroadSmartRoutingChange(previousSmartRouting, smart_routing)) {
-        await closeAllConnections().catch(() => {})
-      } else {
-        await closeConnectionsForRuleTargets(
-          collectChangedRuleTargets(
-            previousSmartRouting.custom_rules,
-            smart_routing.custom_rules,
-          ),
-        )
-      }
+      await closeAllConnections().catch(() => {})
       showNotice.success('分流配置已保存')
     } else {
       showNotice.error('分流配置已保存，但运行配置校验未通过')
     }
   }, [draft, mutateVerge, patchVerge, verge])
 
+  const saveCustomRule = useCallback(
+    async (index: number) => {
+      const previousSmartRouting = normalizeSmartRouting(verge?.smart_routing)
+      const currentDraftRule = draft.custom_rules[index]
+      const nextRule = currentDraftRule
+        ? toPersistedRule(
+            currentDraftRule,
+            previousSmartRouting.proxy_policy || draft.proxy_policy,
+          )
+        : null
+
+      if (!nextRule) {
+        showNotice.error('请先填写规则内容')
+        return
+      }
+
+      const nextRules = [...previousSmartRouting.custom_rules]
+      const previousRule = nextRules[index]
+      if (index < nextRules.length) {
+        nextRules[index] = nextRule
+      } else {
+        nextRules.push(nextRule)
+      }
+
+      const smart_routing: ISmartRoutingConfig = {
+        ...previousSmartRouting,
+        custom_rules: nextRules,
+      }
+
+      mutateVerge({ ...verge, smart_routing }, false)
+      await patchVerge({ smart_routing })
+
+      const applied = await enhanceProfiles()
+      if (applied) {
+        const ruleTargets = [previousRule, nextRule]
+          .map((rule) => (rule ? normalizeRuleTarget(rule) : null))
+          .filter((target): target is RuleTarget => Boolean(target))
+        await closeConnectionsForRuleTargets(ruleTargets)
+        setDraft(normalizeSmartRouting(smart_routing))
+        showNotice.success('单条规则已保存')
+      } else {
+        showNotice.error('单条规则已保存，但运行配置校验未通过')
+      }
+    },
+    [draft.custom_rules, draft.proxy_policy, mutateVerge, patchVerge, verge],
+  )
+
   const renderPolicySelect = (
     value: string,
     onChange: (value: string) => void,
-    width: number | string = 220,
+    width: number | string = '100%',
   ) => (
     <PolicySelector
       value={value}
@@ -668,7 +678,16 @@ const SmartRoutingPage = () => {
         </Button>
       }
     >
-      <Box sx={{ maxWidth: 940, mx: 'auto', px: 1.5, py: 1.5 }}>
+      <Box
+        sx={{
+          boxSizing: 'border-box',
+          maxWidth: 1180,
+          mx: 'auto',
+          px: { xs: 1, sm: 1.5, md: 2 },
+          py: 1.5,
+          width: '100%',
+        }}
+      >
         <SectionCard title="总开关">
           <SettingRow label="启用分流">
             <Switch
@@ -683,36 +702,40 @@ const SmartRoutingPage = () => {
         <SectionCard title="默认策略">
           <Stack spacing={1}>
             <SettingRow label="默认代理/节点">
-            {renderPolicySelect(draft.proxy_policy, (proxy_policy) =>
-              void saveDraftPatch({ proxy_policy }),
-            )}
+              {renderPolicySelect(
+                draft.proxy_policy,
+                (proxy_policy) => void saveDraftPatch({ proxy_policy }),
+              )}
             </SettingRow>
             <SettingRow label="直连策略">
-            {renderPolicySelect(draft.direct_policy, (direct_policy) =>
-              updateDraft({ direct_policy }),
-            )}
+              {renderPolicySelect(draft.direct_policy, (direct_policy) =>
+                updateDraft({ direct_policy }),
+              )}
             </SettingRow>
             <SettingRow label="拦截策略">
-            {renderPolicySelect(draft.reject_policy, (reject_policy) =>
-              updateDraft({ reject_policy }),
-            )}
+              {renderPolicySelect(draft.reject_policy, (reject_policy) =>
+                updateDraft({ reject_policy }),
+              )}
             </SettingRow>
             <SettingRow label="最终策略">
-            {renderPolicySelect(draft.final_policy, (final_policy) =>
-              updateDraft({ final_policy }),
-            )}
+              {renderPolicySelect(draft.final_policy, (final_policy) =>
+                updateDraft({ final_policy }),
+              )}
             </SettingRow>
             <SettingRow label="追加 MATCH">
-            <Switch
-              checked={draft.append_match}
-              onChange={(_, checked) => updateDraft({ append_match: checked })}
-            />
+              <Switch
+                checked={draft.append_match}
+                onChange={(_, checked) =>
+                  updateDraft({ append_match: checked })
+                }
+              />
             </SettingRow>
           </Stack>
         </SectionCard>
 
         <SectionCard
           title="单独规则"
+          contentSx={{ p: 0 }}
           action={
             <Stack direction="row" spacing={1}>
               <Button
@@ -734,57 +757,172 @@ const SmartRoutingPage = () => {
             </Stack>
           }
         >
-          <Box>
+          <Stack
+            spacing={2}
+            sx={{
+              bgcolor: (theme) =>
+                theme.palette.mode === 'light' ? '#eeeeee' : '#1f2028',
+              boxSizing: 'border-box',
+              p: { xs: 1.25, sm: 1.5, md: 2 },
+              width: '100%',
+            }}
+          >
             {draft.custom_rules.map((rule, index) => (
               <Box
                 key={index}
                 sx={{
-                  alignItems: 'center',
-                  borderBottom: (theme) =>
-                    index === draft.custom_rules.length - 1
-                      ? 'none'
-                      : `1px solid ${theme.palette.divider}`,
+                  bgcolor: (theme) =>
+                    theme.palette.mode === 'light' ? '#ffffff' : '#282a36',
+                  border: (theme) =>
+                    '1px solid ' +
+                    (theme.palette.mode === 'light' ? '#d9d9d9' : '#3a3d4a'),
+                  borderRadius: 1,
+                  boxSizing: 'border-box',
+                  boxShadow: (theme) =>
+                    theme.palette.mode === 'light'
+                      ? '0 1px 2px rgba(0, 0, 0, 0.04)'
+                      : 'none',
                   display: 'grid',
                   gap: 1,
                   gridTemplateColumns: {
-                    xs: 'auto minmax(0, 1fr) auto',
-                    md: 'auto 100px minmax(0, 1fr) minmax(260px, 1.2fr) auto auto auto',
+                    xs: 'minmax(0, 1fr) auto',
+                    sm: 'minmax(0, 1fr) auto',
                   },
-                  px: 0,
-                  py: 1.25,
+                  gridTemplateAreas: {
+                    xs: [
+                      '"toggles actions"',
+                      '"match match"',
+                      '"policy policy"',
+                    ].join(' '),
+                    sm: [
+                      '"toggles actions"',
+                      '"match match"',
+                      '"policy policy"',
+                    ].join(' '),
+                  },
+                  minHeight: 74,
+                  px: { xs: 1.25, sm: 1.5 },
+                  py: 1.15,
                 }}
               >
-                <Switch
-                  checked={rule.enabled ?? true}
-                  onChange={(_, checked) =>
-                    updateCustomRule(index, { enabled: checked })
-                  }
-                />
-                <Select
-                  size="small"
-                  value={rule.type ?? 'domain'}
-                  onChange={(event) =>
-                    updateCustomRule(index, {
-                      type: event.target.value as 'domain' | 'process',
-                    })
-                  }
-                  sx={{ width: 100, '> div': { py: '7.5px' } }}
+                <Stack
+                  direction={{ xs: 'column', sm: 'row' }}
+                  spacing={{ xs: 0.45, sm: 1.25 }}
+                  sx={{
+                    alignItems: { xs: 'flex-start', sm: 'center' },
+                    alignSelf: 'center',
+                    flexWrap: 'wrap',
+                    gridArea: 'toggles',
+                    minWidth: 0,
+                  }}
                 >
-                  <MenuItem value="domain">网站</MenuItem>
-                  <MenuItem value="process">EXE</MenuItem>
-                </Select>
-                <TextField
-                  size="small"
-                  value={rule.value ?? ''}
-                  placeholder={
-                    rule.type === 'process' ? 'steam.exe' : 'example.com'
-                  }
-                  onChange={(event) =>
-                    updateCustomRule(index, { value: event.target.value })
-                  }
-                  sx={{ flex: 1, minWidth: 160 }}
-                />
-                <Box sx={{ minWidth: 0 }}>
+                  <Stack
+                    direction="row"
+                    spacing={0.75}
+                    sx={{ alignItems: 'center', minWidth: 'fit-content' }}
+                  >
+                    <Switch
+                      checked={rule.enabled ?? true}
+                      onChange={(_, checked) =>
+                        updateCustomRule(index, { enabled: checked })
+                      }
+                    />
+                    <Typography sx={{ fontSize: 13, fontWeight: 600 }}>
+                      规则开关
+                    </Typography>
+                  </Stack>
+                  <Stack
+                    direction="row"
+                    spacing={0.75}
+                    sx={{ alignItems: 'center', minWidth: 'fit-content' }}
+                  >
+                    <Switch
+                      checked={Boolean(rule.chain_enabled)}
+                      onChange={(_, checked) => {
+                        if (checked) {
+                          enableRuleChain(index, rule)
+                        } else {
+                          updateCustomRule(index, { chain_enabled: false })
+                        }
+                      }}
+                    />
+                    <Typography sx={{ fontSize: 13, fontWeight: 600 }}>
+                      链式代理
+                    </Typography>
+                  </Stack>
+                </Stack>
+                <Box
+                  sx={{
+                    alignItems: 'center',
+                    display: 'grid',
+                    gap: 1,
+                    gridArea: 'match',
+                    gridTemplateColumns: {
+                      xs:
+                        rule.type === 'process' ? 'minmax(0, 1fr) auto' : '1fr',
+                      sm:
+                        rule.type === 'process' ? 'minmax(0, 1fr) auto' : '1fr',
+                    },
+                    gridTemplateAreas: {
+                      xs:
+                        rule.type === 'process'
+                          ? ['"type type"', '"value file"'].join(' ')
+                          : ['"type"', '"value"'].join(' '),
+                      sm:
+                        rule.type === 'process'
+                          ? ['"type type"', '"value file"'].join(' ')
+                          : ['"type"', '"value"'].join(' '),
+                    },
+                    minWidth: 0,
+                    width: '100%',
+                  }}
+                >
+                  <Select
+                    size="small"
+                    value={rule.type ?? 'domain'}
+                    onChange={(event) =>
+                      updateCustomRule(index, {
+                        type: event.target.value as 'domain' | 'process',
+                      })
+                    }
+                    sx={{
+                      gridArea: 'type',
+                      width: '100%',
+                      '> div': { py: '7.5px' },
+                    }}
+                  >
+                    <MenuItem value="domain">网站</MenuItem>
+                    <MenuItem value="process">EXE</MenuItem>
+                  </Select>
+                  <TextField
+                    size="small"
+                    value={rule.value ?? ''}
+                    placeholder={
+                      rule.type === 'process' ? 'steam.exe' : 'example.com'
+                    }
+                    onChange={(event) =>
+                      updateCustomRule(index, { value: event.target.value })
+                    }
+                    sx={{ gridArea: 'value', minWidth: 0, width: '100%' }}
+                  />
+                  {rule.type === 'process' && (
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<FileOpenOutlinedIcon />}
+                      onClick={() => selectProcessFile(index)}
+                      sx={{
+                        flexShrink: 0,
+                        gridArea: 'file',
+                        minWidth: 76,
+                        px: 1,
+                      }}
+                    >
+                      选择
+                    </Button>
+                  )}
+                </Box>
+                <Box sx={{ gridArea: 'policy', minWidth: 0, width: '100%' }}>
                   {rule.chain_enabled ? (
                     <Stack
                       direction={{ xs: 'column', sm: 'row' }}
@@ -792,7 +930,8 @@ const SmartRoutingPage = () => {
                       sx={{ minWidth: 0 }}
                     >
                       <PolicySelector
-                        label="前置节点"
+                        fieldLabel="中转节点"
+                        label="中转节点"
                         value={rule.chain_entry ?? ''}
                         optionSources={nodeSources}
                         options={chainNodeOptions}
@@ -803,7 +942,8 @@ const SmartRoutingPage = () => {
                         width="100%"
                       />
                       <PolicySelector
-                        label="出口节点"
+                        fieldLabel="落地节点"
+                        label="落地节点"
                         value={rule.chain_exit || rule.policy || ''}
                         optionSources={nodeSources}
                         options={chainNodeOptions}
@@ -818,46 +958,44 @@ const SmartRoutingPage = () => {
                       />
                     </Stack>
                   ) : (
-                    renderPolicySelect(
-                      rule.policy || draft.proxy_policy,
-                      (policy) => updateCustomRule(index, { policy }),
-                      '100%',
-                    )
+                    <PolicySelector
+                      fieldLabel="落地节点"
+                      label="落地节点"
+                      value={rule.policy || draft.proxy_policy}
+                      optionSources={policySources}
+                      options={policyOptions}
+                      onOpen={loadPolicyTargets}
+                      onChange={(policy) => updateCustomRule(index, { policy })}
+                      width="100%"
+                    />
                   )}
                 </Box>
-                {rule.type === 'process' && (
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    startIcon={<FileOpenOutlinedIcon />}
-                    onClick={() => selectProcessFile(index)}
-                    sx={{ flexShrink: 0 }}
-                  >
-                    选择
-                  </Button>
-                )}
-                {rule.type !== 'process' && <Box sx={{ display: { xs: 'none', md: 'block' } }} />}
-                <Button
-                  size="small"
-                  variant={rule.chain_enabled ? 'contained' : 'outlined'}
-                  startIcon={<LinkRoundedIcon />}
-                  onClick={() => {
-                    if (rule.chain_enabled) {
-                      updateCustomRule(index, { chain_enabled: false })
-                    } else {
-                      enableRuleChain(index, rule)
-                    }
+                <Stack
+                  direction="row"
+                  spacing={0.75}
+                  sx={{
+                    alignSelf: 'center',
+                    gridArea: 'actions',
+                    justifySelf: 'end',
                   }}
-                  sx={{ flexShrink: 0, minWidth: 76 }}
                 >
-                  链式
-                </Button>
-                <IconButton
-                  size="small"
-                  onClick={() => removeCustomRule(index)}
-                >
-                  <DeleteOutlineRoundedIcon fontSize="small" />
-                </IconButton>
+                  <IconButton
+                    size="small"
+                    title="保存此规则"
+                    onClick={() => void saveCustomRule(index)}
+                    sx={{ color: 'primary.main' }}
+                  >
+                    <SaveOutlinedIcon fontSize="small" />
+                  </IconButton>
+                  <IconButton
+                    size="small"
+                    title="删除此规则"
+                    onClick={() => removeCustomRule(index)}
+                    sx={{ color: 'error.main' }}
+                  >
+                    <DeleteOutlineRoundedIcon fontSize="small" />
+                  </IconButton>
+                </Stack>
               </Box>
             ))}
             <Box sx={{ pt: draft.custom_rules.length ? 1.25 : 0 }}>
@@ -872,14 +1010,11 @@ const SmartRoutingPage = () => {
                 新增规则
               </Button>
             </Box>
-          </Box>
+          </Stack>
         </SectionCard>
 
         <SectionCard title="实时连接">
-            <RoutingMonitor
-              compact
-              customRules={draft.custom_rules}
-            />
+          <RoutingMonitor compact customRules={draft.custom_rules} />
         </SectionCard>
 
         <SectionCard title="规则模块">
@@ -908,10 +1043,11 @@ const SmartRoutingPage = () => {
           direction="row"
           spacing={1}
           sx={{
+            color: 'text.secondary',
+            flexWrap: 'wrap',
+            fontSize: 12,
             px: 2,
             py: 1.5,
-            color: 'text.secondary',
-            fontSize: 12,
           }}
         >
           <Box>当前可选目标：{policyTargets.length}</Box>

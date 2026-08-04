@@ -1104,7 +1104,7 @@ dependencies = [
 
 [[package]]
 name = "clash-verge-route"
-version = "1.0.3"
+version = "1.0.8"
 dependencies = [
  "aes-gcm",
  "anyhow",

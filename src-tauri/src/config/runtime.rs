@@ -136,4 +136,43 @@ impl IRuntime {
             }
         }
     }
+
+    #[inline]
+    pub fn append_proxy_targets(&mut self, mut proxy_targets: Vec<Mapping>) {
+        if proxy_targets.is_empty() {
+            return;
+        }
+
+        let config = if let Some(config) = self.config.as_mut() {
+            config
+        } else {
+            return;
+        };
+
+        let proxies_key = Value::from("proxies");
+        if !matches!(config.get(&proxies_key), Some(Value::Sequence(_))) {
+            config.insert(proxies_key.clone(), Value::Sequence(Vec::new()));
+        }
+
+        let Some(Value::Sequence(proxies)) = config.get_mut(&proxies_key) else {
+            return;
+        };
+
+        let mut existing_names: HashSet<String> = proxies
+            .iter()
+            .filter_map(|proxy| proxy.get("name"))
+            .filter_map(Value::as_str)
+            .map(String::from)
+            .collect();
+
+        for proxy in proxy_targets.drain(..) {
+            let Some(name) = proxy.get("name").and_then(Value::as_str) else {
+                continue;
+            };
+
+            if existing_names.insert(String::from(name)) {
+                proxies.push(Value::Mapping(proxy));
+            }
+        }
+    }
 }

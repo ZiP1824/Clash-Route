@@ -2,6 +2,7 @@ import AccessTimeRounded from '@mui/icons-material/AccessTimeRounded'
 import CheckCircleOutlineRounded from '@mui/icons-material/CheckCircleOutlineRounded'
 import FilterAltOffRounded from '@mui/icons-material/FilterAltOffRounded'
 import FilterAltRounded from '@mui/icons-material/FilterAltRounded'
+import KeyboardArrowDownRounded from '@mui/icons-material/KeyboardArrowDownRounded'
 import NetworkCheckRounded from '@mui/icons-material/NetworkCheckRounded'
 import SortByAlphaRounded from '@mui/icons-material/SortByAlphaRounded'
 import SortRounded from '@mui/icons-material/SortRounded'
@@ -24,7 +25,7 @@ import { useCallback, useEffect, useMemo, useReducer, useState } from 'react'
 import { BaseLoading } from '@/components/base'
 import { useProxyDelayState } from '@/hooks/use-proxy-delay-state'
 import { useVerge } from '@/hooks/use-verge'
-import { calcuProxies } from '@/services/cmds'
+import { calcuProxies, ensureSmartRoutingProxyTargets } from '@/services/cmds'
 import delayManager from '@/services/delay'
 
 const SELECTOR_GROUP = 'smart-routing-selector'
@@ -47,6 +48,7 @@ type PolicyOption = {
 }
 
 type PolicySelectorProps = {
+  fieldLabel?: string
   label?: string
   onChange: (value: string) => void
   onOpen?: () => Promise<void> | void
@@ -67,6 +69,21 @@ const createFallbackProxy = (name: string): IProxyItem =>
     smux: false,
     history: [],
   }) as IProxyItem
+
+type ProxyData = Awaited<ReturnType<typeof calcuProxies>>
+
+const buildProxyMap = (proxyData: ProxyData) => {
+  const nextMap: Record<string, IProxyItem> = {}
+  Object.entries(proxyData.records).forEach(([name, proxy]) => {
+    nextMap[name] = proxy
+  })
+  proxyData.groups.forEach((group) => {
+    nextMap[group.name] = group as unknown as IProxyItem
+  })
+  nextMap.GLOBAL = proxyData.global as unknown as IProxyItem
+  nextMap.DIRECT = proxyData.direct
+  return nextMap
+}
 
 const sortOptions = (
   items: PolicyOption[],
@@ -187,6 +204,7 @@ const PolicyOptionCard = ({
 }
 
 export const PolicySelector = ({
+  fieldLabel,
   label = '选择节点',
   onChange,
   onOpen,
@@ -219,16 +237,7 @@ export const PolicySelector = ({
       .then((proxyData) => {
         if (!active) return
 
-        const nextMap: Record<string, IProxyItem> = {}
-        Object.entries(proxyData.records).forEach(([name, proxy]) => {
-          nextMap[name] = proxy
-        })
-        proxyData.groups.forEach((group) => {
-          nextMap[group.name] = group as unknown as IProxyItem
-        })
-        nextMap.GLOBAL = proxyData.global as unknown as IProxyItem
-        nextMap.DIRECT = proxyData.direct
-        setProxyMap(nextMap)
+        setProxyMap(buildProxyMap(proxyData))
       })
       .catch(() => setProxyMap({}))
 
@@ -303,25 +312,57 @@ export const PolicySelector = ({
 
   const toggleSort = () => {
     setSortType((current) =>
-      current === 'default' ? 'delay' : current === 'delay' ? 'name' : 'default',
+      current === 'default'
+        ? 'delay'
+        : current === 'delay'
+          ? 'name'
+          : 'default',
     )
   }
 
   const checkDelay = useLockFn(async () => {
-    const testable = visibleOptions
-      .filter(
-        (option) =>
-          !PRESET_PROXY_NAMES.has(option.name) &&
-          Boolean(proxyMap[option.name]) &&
-          option.proxy.type !== 'unknown',
+    const testNames = visibleOptions
+      .map((option) => option.name)
+      .filter((name) => !PRESET_PROXY_NAMES.has(name))
+
+    await ensureSmartRoutingProxyTargets(testNames)
+
+    let latestProxyMap = proxyMap
+    try {
+      const proxyData = await calcuProxies()
+      latestProxyMap = buildProxyMap(proxyData)
+      setProxyMap(latestProxyMap)
+    } catch (error) {
+      console.warn(
+        '[PolicySelector] reload proxies before delay check failed',
+        error,
       )
-      .map((option) => option.proxy)
+    }
+
+    const testable = testNames
+      .map((name) => latestProxyMap[name])
+      .filter(
+        (proxy): proxy is IProxyItem =>
+          Boolean(proxy) && proxy.type !== 'unknown',
+      )
 
     await delayManager.checkListDelay(testable, SELECTOR_GROUP, timeout)
     forceRender()
   })
 
   const selectedLabel = value?.trim() || label
+  const selectedProxy = useMemo(
+    () =>
+      value
+        ? (proxyMap[value] ?? createFallbackProxy(value))
+        : createFallbackProxy(selectedLabel),
+    [proxyMap, selectedLabel, value],
+  )
+  const selectedDelay = useProxyDelayState(selectedProxy, SELECTOR_GROUP)
+  const showSelectedDelay =
+    Boolean(value) &&
+    selectedDelay.delayValue !== -1 &&
+    selectedDelay.delayValue !== -2
 
   return (
     <>
@@ -334,13 +375,36 @@ export const PolicySelector = ({
           color: value ? 'text.primary' : 'text.secondary',
           display: 'flex',
           fontSize: 14,
-          height: 37,
+          height: fieldLabel ? 42 : 37,
           justifyContent: 'space-between',
           minWidth: 0,
+          overflow: 'visible',
+          position: 'relative',
           px: 1.5,
           width,
         })}
       >
+        {fieldLabel && (
+          <Box
+            component="span"
+            sx={{
+              bgcolor: 'background.paper',
+              color: 'text.secondary',
+              fontSize: 12,
+              left: 10,
+              lineHeight: 1,
+              maxWidth: 'calc(100% - 44px)',
+              overflow: 'hidden',
+              px: 0.5,
+              position: 'absolute',
+              textOverflow: 'ellipsis',
+              top: -6,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {fieldLabel}
+          </Box>
+        )}
         <Box
           component="span"
           sx={{
@@ -352,7 +416,40 @@ export const PolicySelector = ({
         >
           {selectedLabel}
         </Box>
-        <Box component="span" sx={{ color: 'text.secondary', ml: 1 }}>
+        <Stack
+          component="span"
+          direction="row"
+          spacing={0.75}
+          sx={{ alignItems: 'center', flexShrink: 0, ml: 1 }}
+        >
+          {showSelectedDelay && (
+            <Box
+              component="span"
+              sx={{
+                bgcolor: delayManager.formatDelayColor(
+                  selectedDelay.delayValue,
+                  selectedDelay.timeout,
+                ),
+                borderRadius: 999,
+                color: '#fff',
+                fontSize: 12,
+                fontWeight: 700,
+                lineHeight: 1,
+                px: 0.75,
+                py: 0.4,
+              }}
+            >
+              {delayManager.formatDelay(
+                selectedDelay.delayValue,
+                selectedDelay.timeout,
+              )}
+            </Box>
+          )}
+          <KeyboardArrowDownRounded
+            sx={{ color: 'text.secondary', fontSize: 18 }}
+          />
+        </Stack>
+        <Box component="span" sx={{ display: 'none' }}>
           ▾
         </Box>
       </ButtonBase>

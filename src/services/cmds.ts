@@ -129,6 +129,10 @@ export async function syncTrayProxySelection() {
   return invoke<void>('sync_tray_proxy_selection')
 }
 
+export async function ensureSmartRoutingProxyTargets(proxyNames: string[]) {
+  return invoke<void>('ensure_smart_routing_proxy_targets', { proxyNames })
+}
+
 export async function calcuProxies(): Promise<{
   global: IProxyGroupItem
   direct: IProxyItem
