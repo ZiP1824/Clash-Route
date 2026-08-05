@@ -212,14 +212,34 @@ fn normalize_domain(value: &str) -> Option<String> {
         .trim()
         .trim_start_matches("http://")
         .trim_start_matches("https://")
+        .trim_start_matches("*.")
         .trim_start_matches('.');
-    let domain = value.split('/').next().unwrap_or(value).trim();
-
-    if domain.is_empty() {
-        None
-    } else {
-        Some(domain.to_owned())
+    let domain = value
+        .split('/')
+        .next()
+        .unwrap_or(value)
+        .trim()
+        .trim_start_matches('[')
+        .trim_end_matches(']');
+    let domain = match domain.rsplit_once(':') {
+        Some((host, port)) if !host.contains(':') && port.chars().all(|ch| ch.is_ascii_digit()) => host,
+        _ => domain,
     }
+    .trim()
+    .trim_end_matches('.')
+    .to_ascii_lowercase();
+
+    if domain.is_empty() { None } else { Some(domain) }
+}
+
+fn split_domain_values(value: &str) -> Vec<String> {
+    let mut seen = HashSet::new();
+
+    value
+        .split(|ch: char| matches!(ch, '\n' | '\r' | '\t' | ' ' | ',' | '\u{ff0c}' | ';' | '\u{ff1b}'))
+        .filter_map(normalize_domain)
+        .filter(|domain| seen.insert(domain.clone()))
+        .collect()
 }
 
 fn normalize_process_name(value: &str) -> Option<String> {
@@ -249,11 +269,17 @@ fn build_custom_rules(config: &mut Mapping, settings: &JsonValue, proxy_library:
         };
 
         let rule_type = setting_str(item, "type").unwrap_or("domain");
+        let domains = if rule_type == "process" {
+            Vec::new()
+        } else {
+            split_domain_values(value)
+        };
         let policy = if setting_bool(item, "chain_enabled", false) {
             let chain_entry = setting_str(item, "chain_entry");
             let chain_exit = setting_str(item, "chain_exit");
             if let (Some(chain_entry), Some(chain_exit)) = (chain_entry, chain_exit) {
-                let chain_name = chain_proxy_name(index, rule_type, value);
+                let chain_name_value = domains.first().map(String::as_str).unwrap_or(value);
+                let chain_name = chain_proxy_name(index, rule_type, chain_name_value);
                 if push_chain_proxy(config, &chain_name, chain_entry, chain_exit, proxy_library) {
                     chain_name
                 } else {
@@ -277,7 +303,7 @@ fn build_custom_rules(config: &mut Mapping, settings: &JsonValue, proxy_library:
                 }
             }
             _ => {
-                if let Some(domain) = normalize_domain(value) {
+                for domain in &domains {
                     push_rule(&mut rules, format!("DOMAIN-SUFFIX,{domain},{policy}"));
                 }
             }
@@ -484,6 +510,57 @@ rules:
         assert_eq!(
             rules.get(1).and_then(Value::as_str),
             Some("PROCESS-NAME,steam.exe,DIRECT")
+        );
+    }
+
+    #[test]
+    fn custom_domain_rule_supports_multiple_values() {
+        let config = mapping(
+            r#"
+proxy-groups:
+  - name: Proxy
+    type: select
+rules:
+  - MATCH,DIRECT
+"#,
+        );
+
+        let result = apply_smart_routing(
+            config,
+            Some(&json!({
+                "enabled": true,
+                "custom_rules": [
+                    {
+                        "enabled": true,
+                        "type": "domain",
+                        "value": "https://chatgpt.com/path\nfiles.oaiusercontent.com, openai.com\u{ff1b}*.example.org:443\nCHATGPT.com",
+                        "policy": "Proxy"
+                    }
+                ],
+                "categories": {
+                    "ads": false,
+                    "lan": false,
+                    "domestic": false,
+                    "foreign": false,
+                    "ai": false,
+                    "streaming": false
+                }
+            })),
+            &Default::default(),
+        );
+        let rules = result
+            .get("rules")
+            .and_then(Value::as_sequence)
+            .expect("rules should be a sequence");
+
+        assert_eq!(
+            rules.iter().filter_map(Value::as_str).take(4).collect::<Vec<_>>(),
+            vec![
+                "DOMAIN-SUFFIX,chatgpt.com,Proxy",
+                "DOMAIN-SUFFIX,files.oaiusercontent.com,Proxy",
+                "DOMAIN-SUFFIX,openai.com,Proxy",
+                "DOMAIN-SUFFIX,example.org,Proxy",
+            ]
         );
     }
 

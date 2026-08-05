@@ -150,6 +150,19 @@ function normalizeDomain(value: string) {
   }
 }
 
+function splitDomainValues(value: string) {
+  const seen = new Set<string>()
+
+  return value
+    .split(/[\s,，;；]+/)
+    .map(normalizeDomain)
+    .filter((domain) => {
+      if (!domain || seen.has(domain)) return false
+      seen.add(domain)
+      return true
+    })
+}
+
 function normalizeProcessName(value: string) {
   return value
     .trim()
@@ -160,17 +173,19 @@ function normalizeProcessName(value: string) {
     .toLowerCase()
 }
 
-function normalizeRuleTarget(rule: ISmartRoutingCustomRule): RuleTarget | null {
-  if (rule.enabled === false) return null
+function normalizeRuleTargets(rule: ISmartRoutingCustomRule): RuleTarget[] {
+  if (rule.enabled === false) return []
 
   const value = `${rule.value ?? ''}`.trim()
-  if (!value) return null
+  if (!value) return []
 
   const type = rule.type === 'process' ? 'process' : 'domain'
-  const matchValue =
-    type === 'process' ? normalizeProcessName(value) : normalizeDomain(value)
+  if (type === 'process') {
+    const matchValue = normalizeProcessName(value)
+    return matchValue ? [{ matchValue, type }] : []
+  }
 
-  return matchValue ? { matchValue, type } : null
+  return splitDomainValues(value).map((matchValue) => ({ matchValue, type }))
 }
 
 function toPersistedRule(
@@ -631,9 +646,9 @@ const SmartRoutingPage = () => {
 
       const applied = await enhanceProfiles()
       if (applied) {
-        const ruleTargets = [previousRule, nextRule]
-          .map((rule) => (rule ? normalizeRuleTarget(rule) : null))
-          .filter((target): target is RuleTarget => Boolean(target))
+        const ruleTargets = [previousRule, nextRule].flatMap((rule) =>
+          rule ? normalizeRuleTargets(rule) : [],
+        )
         await closeConnectionsForRuleTargets(ruleTargets)
         setDraft(normalizeSmartRouting(smart_routing))
         showNotice.success('单条规则已保存')
@@ -898,8 +913,13 @@ const SmartRoutingPage = () => {
                     size="small"
                     value={rule.value ?? ''}
                     placeholder={
-                      rule.type === 'process' ? 'steam.exe' : 'example.com'
+                      rule.type === 'process'
+                        ? 'steam.exe'
+                        : 'example.com\nopenai.com\nfiles.oaiusercontent.com'
                     }
+                    multiline={rule.type !== 'process'}
+                    minRows={rule.type === 'process' ? undefined : 2}
+                    maxRows={rule.type === 'process' ? undefined : 5}
                     onChange={(event) =>
                       updateCustomRule(index, { value: event.target.value })
                     }
