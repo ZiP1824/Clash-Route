@@ -296,14 +296,22 @@ interface ISmartRoutingCustomRule {
   chain_exit?: string
 }
 
+interface ISmartRoutingServiceBinding {
+  service_id: string
+  enabled?: boolean
+  policy?: string
+}
+
 interface ISmartRoutingConfig {
   enabled?: boolean
+  auto_correction?: boolean
   proxy_policy?: string
   direct_policy?: string
   reject_policy?: string
   final_policy?: string
   append_match?: boolean
   categories?: ISmartRoutingCategories
+  service_bindings?: ISmartRoutingServiceBinding[]
   custom_rules?: ISmartRoutingCustomRule[]
 }
 

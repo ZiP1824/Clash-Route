@@ -1,5 +1,6 @@
 ﻿import AddRoundedIcon from '@mui/icons-material/AddRounded'
 import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded'
+/* eslint-disable @eslint-react/no-array-index-key -- Custom rules are persisted as an ordered list without IDs. */
 import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined'
 import FileOpenOutlinedIcon from '@mui/icons-material/FileOpenOutlined'
 import FileUploadOutlinedIcon from '@mui/icons-material/FileUploadOutlined'
@@ -7,6 +8,7 @@ import SaveOutlinedIcon from '@mui/icons-material/SaveOutlined'
 import {
   Box,
   Button,
+  Chip,
   IconButton,
   MenuItem,
   Select,
@@ -38,6 +40,12 @@ import { RoutingMonitor } from '@/components/smart-routing/routing-monitor'
 import { useVerge } from '@/hooks/use-verge'
 import { enhanceProfiles } from '@/services/cmds'
 import { showNotice } from '@/services/notice-service'
+import { useSmartRoutingCorrectionState } from '@/services/smart-routing-correction'
+import {
+  getServiceMatcherCounts,
+  smartRoutingServiceCategories,
+  smartRoutingServices,
+} from '@/services/smart-routing-services'
 import { collectSmartRoutingOptions } from '@/utils/smart-routing-options'
 
 const defaultCategories: Required<ISmartRoutingCategories> = {
@@ -61,12 +69,14 @@ type SmartRoutingRulesExport = {
 
 const defaultSmartRouting: SmartRoutingDraft = {
   enabled: false,
+  auto_correction: true,
   proxy_policy: 'GLOBAL',
   direct_policy: 'DIRECT',
   reject_policy: 'REJECT',
   final_policy: 'GLOBAL',
   append_match: false,
   categories: defaultCategories,
+  service_bindings: [],
   custom_rules: [],
 }
 
@@ -97,6 +107,7 @@ function normalizeSmartRouting(value?: ISmartRoutingConfig): SmartRoutingDraft {
       ...defaultCategories,
       ...value?.categories,
     },
+    service_bindings: value?.service_bindings ?? [],
     custom_rules: value?.custom_rules ?? [],
   }
 }
@@ -211,12 +222,20 @@ function buildSmartRoutingConfig(
 ): ISmartRoutingConfig {
   return {
     enabled: draft.enabled,
+    auto_correction: draft.auto_correction,
     proxy_policy: draft.proxy_policy,
     direct_policy: draft.direct_policy,
     reject_policy: draft.reject_policy,
     final_policy: draft.final_policy,
     append_match: draft.append_match,
     categories: draft.categories,
+    service_bindings: draft.service_bindings
+      .filter((binding) => binding.service_id.trim())
+      .map((binding) => ({
+        service_id: binding.service_id.trim(),
+        enabled: binding.enabled ?? true,
+        policy: binding.policy?.trim() || draft.proxy_policy,
+      })),
     custom_rules: draft.custom_rules
       .map((rule) => toPersistedRule(rule, draft.proxy_policy))
       .filter((rule): rule is ISmartRoutingCustomRule => Boolean(rule)),
@@ -364,6 +383,7 @@ const SettingRow = ({
 
 const SmartRoutingPage = () => {
   const { verge, patchVerge, mutateVerge } = useVerge()
+  const correctionState = useSmartRoutingCorrectionState()
   const [policyTargets, setPolicyTargets] = useState<string[]>([])
   const [nodeTargets, setNodeTargets] = useState<string[]>([])
   const [policySources, setPolicySources] = useState<Record<string, string>>({})
@@ -373,6 +393,8 @@ const SmartRoutingPage = () => {
   )
 
   useEffect(() => {
+    // The persisted configuration can change outside this page; reset the local editing draft.
+    // eslint-disable-next-line @eslint-react/set-state-in-effect
     setDraft(normalizeSmartRouting(verge?.smart_routing))
   }, [verge?.smart_routing])
 
@@ -403,6 +425,7 @@ const SmartRoutingPage = () => {
         draft.direct_policy,
         draft.reject_policy,
         draft.final_policy,
+        ...draft.service_bindings.map((binding) => binding.policy ?? ''),
         ...draft.custom_rules.map((rule) => rule.policy ?? ''),
         ...draft.custom_rules.map((rule) => rule.chain_entry ?? ''),
         ...draft.custom_rules.map((rule) => rule.chain_exit ?? ''),
@@ -415,6 +438,7 @@ const SmartRoutingPage = () => {
     draft.final_policy,
     draft.proxy_policy,
     draft.reject_policy,
+    draft.service_bindings,
     policyTargets,
   ])
 
@@ -462,6 +486,30 @@ const SmartRoutingPage = () => {
           [key]: value,
         },
       }))
+    },
+    [],
+  )
+
+  const updateServiceBinding = useCallback(
+    (serviceId: string, patch: Partial<ISmartRoutingServiceBinding>) => {
+      setDraft((prev) => {
+        const existing = prev.service_bindings.find(
+          (binding) => binding.service_id === serviceId,
+        )
+        const nextBinding: ISmartRoutingServiceBinding = {
+          service_id: serviceId,
+          enabled: existing?.enabled ?? false,
+          policy: existing?.policy || prev.proxy_policy,
+          ...patch,
+        }
+        const service_bindings = existing
+          ? prev.service_bindings.map((binding) =>
+              binding.service_id === serviceId ? nextBinding : binding,
+            )
+          : [...prev.service_bindings, nextBinding]
+
+        return { ...prev, service_bindings }
+      })
     },
     [],
   )
@@ -563,8 +611,12 @@ const SmartRoutingPage = () => {
         prev.custom_rules
           .map((rule) => normalizeCustomRule(rule, prev.proxy_policy))
           .filter((rule): rule is ISmartRoutingCustomRule => Boolean(rule))
-          .forEach((rule) => ruleMap.set(customRuleKey(rule), rule))
-        importedRules.forEach((rule) => ruleMap.set(customRuleKey(rule), rule))
+          .forEach((rule) => {
+            ruleMap.set(customRuleKey(rule), rule)
+          })
+        importedRules.forEach((rule) => {
+          ruleMap.set(customRuleKey(rule), rule)
+        })
 
         return {
           ...prev,
@@ -573,7 +625,7 @@ const SmartRoutingPage = () => {
       })
 
       showNotice.success(
-        '已导入 ' + importedRules.length + ' 条单独规则，请保存应用',
+        `已导入 ${importedRules.length} 条单独规则，请保存应用`,
       )
     } catch (error) {
       console.error(error)
@@ -745,6 +797,173 @@ const SmartRoutingPage = () => {
                 }
               />
             </SettingRow>
+            <SettingRow label="连接自动修正">
+              <Stack spacing={0.25}>
+                <Switch
+                  checked={draft.auto_correction}
+                  onChange={(_, checked) =>
+                    updateDraft({ auto_correction: checked })
+                  }
+                />
+                <Typography sx={{ color: 'text.secondary', fontSize: 12 }}>
+                  常驻监测已启用服务的漏网连接，重新应用规则并只断开错误连接
+                </Typography>
+              </Stack>
+            </SettingRow>
+          </Stack>
+        </SectionCard>
+
+        <SectionCard title="智能服务">
+          <Stack spacing={2}>
+            {smartRoutingServiceCategories.map((category) => {
+              const services = smartRoutingServices.filter(
+                (service) => service.category === category.id,
+              )
+
+              return (
+                <Box key={category.id}>
+                  <Typography
+                    sx={{
+                      color: 'text.secondary',
+                      fontSize: 13,
+                      fontWeight: 700,
+                      mb: 0.75,
+                    }}
+                  >
+                    {category.label}
+                  </Typography>
+                  <Stack spacing={0.75}>
+                    {services.map((service) => {
+                      const matcherCounts = getServiceMatcherCounts(service)
+                      const processMatchers = service.matchers.filter(
+                        (matcher) => matcher.type === 'process-name',
+                      )
+                      const domainMatchers = service.matchers.filter(
+                        (matcher) => matcher.type === 'domain-suffix',
+                      )
+                      const thirdPartyMatchers = service.matchers.filter(
+                        (matcher) => matcher.relation === 'third-party',
+                      )
+                      const ruleSetMatcher = service.matchers.find(
+                        (matcher) => matcher.type === 'rule-set',
+                      )
+                      const binding = draft.service_bindings.find(
+                        (item) => item.service_id === service.id,
+                      )
+                      const enabled = binding?.enabled ?? false
+
+                      return (
+                        <Box
+                          key={service.id}
+                          sx={{
+                            alignItems: { xs: 'stretch', sm: 'center' },
+                            border: (theme) =>
+                              `1px solid ${theme.palette.divider}`,
+                            borderRadius: 1,
+                            display: 'grid',
+                            gap: 1,
+                            gridTemplateColumns: {
+                              xs: '1fr',
+                              sm: 'minmax(180px, 1fr) minmax(240px, 1.2fr)',
+                            },
+                            px: 1.25,
+                            py: 1,
+                          }}
+                        >
+                          <Stack
+                            direction="row"
+                            spacing={1}
+                            sx={{ alignItems: 'center', minWidth: 0 }}
+                          >
+                            <Switch
+                              checked={enabled}
+                              onChange={(_, checked) =>
+                                updateServiceBinding(service.id, {
+                                  enabled: checked,
+                                })
+                              }
+                            />
+                            <Box sx={{ minWidth: 0 }}>
+                              <Typography
+                                sx={{ fontSize: 14, fontWeight: 700 }}
+                              >
+                                {service.name}
+                              </Typography>
+                              <Stack
+                                direction="row"
+                                spacing={0.5}
+                                sx={{ flexWrap: 'wrap', mt: 0.35 }}
+                              >
+                                {matcherCounts.processes > 0 && (
+                                  <Chip
+                                    label={`${matcherCounts.processes} 个进程`}
+                                    title={processMatchers
+                                      .map((matcher) => matcher.value)
+                                      .join(', ')}
+                                    size="small"
+                                    variant="outlined"
+                                    sx={{ height: 20, fontSize: 11 }}
+                                  />
+                                )}
+                                {matcherCounts.ruleSets > 0 && (
+                                  <Chip
+                                    label={`在线规则集 · ${ruleSetMatcher?.source.label}`}
+                                    title={ruleSetMatcher?.source.url}
+                                    size="small"
+                                    color="primary"
+                                    variant="outlined"
+                                    sx={{ height: 20, fontSize: 11 }}
+                                  />
+                                )}
+                                <Chip
+                                  label={`${matcherCounts.domains - matcherCounts.thirdParty} 个本地保底`}
+                                  title={domainMatchers
+                                    .filter(
+                                      (matcher) =>
+                                        matcher.relation !== 'third-party',
+                                    )
+                                    .map((matcher) => matcher.value)
+                                    .join(', ')}
+                                  size="small"
+                                  variant="outlined"
+                                  sx={{ height: 20, fontSize: 11 }}
+                                />
+                                {matcherCounts.thirdParty > 0 && (
+                                  <Chip
+                                    label={`${matcherCounts.thirdParty} 个第三方关联`}
+                                    title={thirdPartyMatchers
+                                      .map(
+                                        (matcher) =>
+                                          `${matcher.value}（${matcher.source.label}${matcher.source.url ? `：${matcher.source.url}` : ''}）`,
+                                      )
+                                      .join(', ')}
+                                    size="small"
+                                    color="warning"
+                                    variant="outlined"
+                                    sx={{ height: 20, fontSize: 11 }}
+                                  />
+                                )}
+                              </Stack>
+                            </Box>
+                          </Stack>
+                          <PolicySelector
+                            value={binding?.policy || draft.proxy_policy}
+                            disabled={!enabled}
+                            optionSources={policySources}
+                            options={policyOptions}
+                            onOpen={loadPolicyTargets}
+                            onChange={(policy) =>
+                              updateServiceBinding(service.id, { policy })
+                            }
+                            width="100%"
+                          />
+                        </Box>
+                      )
+                    })}
+                  </Stack>
+                </Box>
+              )
+            })}
           </Stack>
         </SectionCard>
 
@@ -1034,7 +1253,53 @@ const SmartRoutingPage = () => {
         </SectionCard>
 
         <SectionCard title="实时连接">
-          <RoutingMonitor compact customRules={draft.custom_rules} />
+          <Stack spacing={1.25}>
+            <Stack
+              direction="row"
+              spacing={0.75}
+              sx={{ alignItems: 'center', flexWrap: 'wrap' }}
+            >
+              <Chip
+                size="small"
+                color={correctionState.enabled ? 'success' : 'default'}
+                label={
+                  correctionState.correcting
+                    ? '正在修正连接'
+                    : correctionState.enabled
+                      ? '后台修正运行中'
+                      : '后台修正未启用'
+                }
+              />
+              <Chip
+                size="small"
+                variant="outlined"
+                label={`已修正 ${correctionState.totalCorrections} 次`}
+              />
+              {correctionState.failedCorrections > 0 && (
+                <Chip
+                  size="small"
+                  color="warning"
+                  variant="outlined"
+                  label={`失败 ${correctionState.failedCorrections} 次`}
+                />
+              )}
+            </Stack>
+            {correctionState.lastEvent && (
+              <Typography sx={{ color: 'text.secondary', fontSize: 12 }}>
+                最近：{correctionState.lastEvent.serviceName} ·{' '}
+                {correctionState.lastEvent.process} →{' '}
+                {correctionState.lastEvent.host}，由{' '}
+                {correctionState.lastEvent.previousRule} 修正到{' '}
+                {correctionState.lastEvent.policy}（
+                {correctionState.lastEvent.elapsedMs} ms）
+              </Typography>
+            )}
+            <RoutingMonitor
+              compact
+              customRules={draft.custom_rules}
+              serviceBindings={draft.service_bindings}
+            />
+          </Stack>
         </SectionCard>
 
         <SectionCard title="规则模块">
@@ -1071,6 +1336,14 @@ const SmartRoutingPage = () => {
           }}
         >
           <Box>当前可选目标：{policyTargets.length}</Box>
+          <Box>
+            已启用服务：
+            {
+              draft.service_bindings.filter(
+                (binding) => binding.enabled !== false,
+              ).length
+            }
+          </Box>
           <Box>单独规则：{draft.custom_rules.length}</Box>
           <Box>
             已启用模块：

@@ -1,3 +1,4 @@
+use serde::Deserialize;
 use serde_json::Value as JsonValue;
 use serde_yaml_ng::{Mapping, Sequence, Value};
 use std::collections::{HashMap, HashSet};
@@ -5,6 +6,23 @@ use std::collections::{HashMap, HashSet};
 const DEFAULT_DIRECT_POLICY: &str = "DIRECT";
 const DEFAULT_REJECT_POLICY: &str = "REJECT";
 const BUILTIN_POLICIES: &[&str] = &["DIRECT", "REJECT", "REJECT-DROP", "PASS"];
+const SERVICE_CATALOG_JSON: &str = include_str!("../../../src/assets/data/smart-routing-services.json");
+
+#[derive(Deserialize)]
+struct SmartServiceDefinition {
+    id: String,
+    matchers: Vec<SmartServiceMatcher>,
+}
+
+#[derive(Deserialize)]
+struct SmartServiceMatcher {
+    #[serde(rename = "type")]
+    matcher_type: String,
+    value: String,
+    #[serde(default)]
+    platforms: Vec<String>,
+    url: Option<String>,
+}
 
 pub type ProxyLibrary = HashMap<String, Mapping>;
 
@@ -249,6 +267,58 @@ fn normalize_process_name(value: &str) -> Option<String> {
     if name.is_empty() { None } else { Some(name.to_owned()) }
 }
 
+fn matcher_platform_supported(platforms: &[String]) -> bool {
+    if platforms.is_empty() {
+        return true;
+    }
+
+    let current = if cfg!(target_os = "windows") {
+        "windows"
+    } else if cfg!(target_os = "macos") {
+        "macos"
+    } else {
+        "linux"
+    };
+    platforms.iter().any(|platform| platform == current)
+}
+
+fn service_provider_name(service_id: &str) -> String {
+    let id = service_id
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
+        .collect::<String>();
+    format!("smart-service-{id}")
+}
+
+fn ensure_service_rule_provider(config: &mut Mapping, service_id: &str, url: &str, policy: &str) -> Option<String> {
+    if url.trim().is_empty() {
+        return None;
+    }
+
+    let providers_key = Value::from("rule-providers");
+    if !matches!(config.get(&providers_key), Some(Value::Mapping(_))) {
+        config.insert(providers_key.clone(), Value::Mapping(Mapping::new()));
+    }
+    let Some(Value::Mapping(providers)) = config.get_mut(&providers_key) else {
+        return None;
+    };
+
+    let provider_name = service_provider_name(service_id);
+    let mut provider = Mapping::new();
+    provider.insert(Value::from("type"), Value::from("http"));
+    provider.insert(Value::from("behavior"), Value::from("domain"));
+    provider.insert(Value::from("format"), Value::from("mrs"));
+    provider.insert(Value::from("url"), Value::from(url));
+    provider.insert(Value::from("proxy"), Value::from(policy));
+    provider.insert(
+        Value::from("path"),
+        Value::from(format!("./ruleset/{provider_name}.mrs")),
+    );
+    provider.insert(Value::from("interval"), Value::from(86_400_i64));
+    providers.insert(Value::from(provider_name.clone()), Value::Mapping(provider));
+    Some(provider_name)
+}
+
 fn build_custom_rules(config: &mut Mapping, settings: &JsonValue, proxy_library: &ProxyLibrary) -> Vec<String> {
     let mut rules = Vec::new();
 
@@ -313,6 +383,75 @@ fn build_custom_rules(config: &mut Mapping, settings: &JsonValue, proxy_library:
     rules
 }
 
+fn build_service_rules(config: &mut Mapping, settings: &JsonValue, proxy_library: &ProxyLibrary) -> Vec<String> {
+    let Some(bindings) = settings.get("service_bindings").and_then(JsonValue::as_array) else {
+        return Vec::new();
+    };
+    let Ok(catalog) = serde_json::from_str::<Vec<SmartServiceDefinition>>(SERVICE_CATALOG_JSON) else {
+        return Vec::new();
+    };
+    let services = catalog
+        .into_iter()
+        .map(|service| (service.id.clone(), service))
+        .collect::<HashMap<_, _>>();
+    let mut rules = Vec::new();
+
+    for binding in bindings {
+        if !setting_bool(binding, "enabled", true) {
+            continue;
+        }
+        let Some(service_id) = setting_str(binding, "service_id") else {
+            continue;
+        };
+        let Some(service) = services.get(service_id) else {
+            continue;
+        };
+        let Some(policy) = setting_str(binding, "policy") else {
+            continue;
+        };
+        if !ensure_policy_available(config, policy, proxy_library) {
+            continue;
+        }
+
+        for matcher in &service.matchers {
+            if !matcher_platform_supported(&matcher.platforms) {
+                continue;
+            }
+
+            match matcher.matcher_type.as_str() {
+                "process-name" => {
+                    if let Some(process) = normalize_process_name(&matcher.value) {
+                        push_rule(&mut rules, format!("PROCESS-NAME,{process},{policy}"));
+                    }
+                }
+                "process-path" => {
+                    let process_path = matcher.value.trim();
+                    if !process_path.is_empty() {
+                        push_rule(&mut rules, format!("PROCESS-PATH,{process_path},{policy}"));
+                    }
+                }
+                "rule-set" => {
+                    if let Some(provider_name) = matcher
+                        .url
+                        .as_deref()
+                        .and_then(|url| ensure_service_rule_provider(config, &service.id, url, policy))
+                    {
+                        push_rule(&mut rules, format!("RULE-SET,{provider_name},{policy}"));
+                    }
+                }
+                "domain-suffix" => {
+                    if let Some(domain) = normalize_domain(&matcher.value) {
+                        push_rule(&mut rules, format!("DOMAIN-SUFFIX,{domain},{policy}"));
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    rules
+}
+
 fn build_smart_rules(config: &mut Mapping, settings: &JsonValue, proxy_library: &ProxyLibrary) -> Vec<String> {
     let mut proxy_policy = setting_str(settings, "proxy_policy")
         .map(ToOwned::to_owned)
@@ -325,6 +464,9 @@ fn build_smart_rules(config: &mut Mapping, settings: &JsonValue, proxy_library: 
     if !ensure_policy_available(config, &proxy_policy, proxy_library) {
         proxy_policy = first_proxy_group_name(config).unwrap_or_else(|| DEFAULT_DIRECT_POLICY.to_owned());
     }
+    // Service bindings are the highest-level user intent and must win over
+    // advanced rules, subscription rules and the terminal default rule.
+    rules.extend(build_service_rules(config, settings, proxy_library));
     rules.extend(build_custom_rules(config, settings, proxy_library));
 
     if category_enabled(settings, "ads", true) {
@@ -375,13 +517,6 @@ fn build_smart_rules(config: &mut Mapping, settings: &JsonValue, proxy_library: 
         push_rule(&mut rules, format!("GEOSITE,geolocation-!cn,{proxy_policy}"));
     }
 
-    if setting_bool(settings, "append_match", false) {
-        let final_policy = setting_str(settings, "final_policy").unwrap_or(&proxy_policy);
-        if ensure_policy_available(config, final_policy, proxy_library) {
-            push_rule(&mut rules, format!("MATCH,{final_policy}"));
-        }
-    }
-
     rules
 }
 
@@ -409,6 +544,24 @@ pub fn apply_smart_routing(
         .and_then(|value| value.as_sequence().cloned())
         .unwrap_or_default();
 
+    let final_rule = if setting_bool(settings, "append_match", false) {
+        let fallback_policy = setting_str(settings, "proxy_policy")
+            .and_then(|policy| ensure_policy_available(&mut config, policy, proxy_library).then_some(policy))
+            .unwrap_or(DEFAULT_DIRECT_POLICY);
+        let final_policy = setting_str(settings, "final_policy").unwrap_or(fallback_policy);
+        ensure_policy_available(&mut config, final_policy, proxy_library).then(|| format!("MATCH,{final_policy}"))
+    } else {
+        None
+    };
+
+    if final_rule.is_some() {
+        existing_rules.retain(|rule| {
+            !rule
+                .as_str()
+                .is_some_and(|rule| rule.trim_start().starts_with("MATCH,"))
+        });
+    }
+
     let mut seen = existing_rule_strings(&existing_rules);
     let mut next_rules = Sequence::new();
 
@@ -419,6 +572,9 @@ pub fn apply_smart_routing(
     }
 
     next_rules.append(&mut existing_rules);
+    if let Some(final_rule) = final_rule {
+        next_rules.push(Value::from(final_rule));
+    }
     config.insert(rules_key, Value::Sequence(next_rules));
     config
 }
@@ -427,7 +583,7 @@ pub fn apply_smart_routing(
 mod tests {
     use super::apply_smart_routing;
     use serde_json::json;
-    use serde_yaml_ng::{Mapping, Value};
+    use serde_yaml_ng::{Mapping, Sequence, Value};
 
     fn mapping(yaml: &str) -> Mapping {
         serde_yaml_ng::from_str(yaml).expect("test yaml should parse")
@@ -694,6 +850,151 @@ password: pass
                 .is_some_and(|proxies| proxies
                     .iter()
                     .any(|proxy| proxy.get("name").and_then(Value::as_str) == Some("TW-3")))
+        );
+    }
+
+    #[test]
+    fn service_rules_precede_advanced_and_subscription_rules() {
+        let config = mapping(
+            r#"
+proxy-groups:
+  - name: GLOBAL
+    type: select
+    proxies: [DIRECT]
+rules:
+  - DOMAIN-SUFFIX,subscription.example,GLOBAL
+  - MATCH,GLOBAL
+"#,
+        );
+
+        let result = apply_smart_routing(
+            config,
+            Some(&json!({
+                "enabled": true,
+                "proxy_policy": "GLOBAL",
+                "final_policy": "DIRECT",
+                "append_match": true,
+                "service_bindings": [
+                    { "service_id": "chatgpt", "enabled": true, "policy": "GLOBAL" }
+                ],
+                "custom_rules": [
+                    { "enabled": true, "type": "domain", "value": "custom.example", "policy": "DIRECT" }
+                ],
+                "categories": {
+                    "ads": false,
+                    "lan": false,
+                    "domestic": false,
+                    "foreign": false,
+                    "ai": false,
+                    "streaming": false
+                }
+            })),
+            &Default::default(),
+        );
+
+        let rules = result
+            .get("rules")
+            .and_then(Value::as_sequence)
+            .expect("rules should be a sequence")
+            .iter()
+            .filter_map(Value::as_str)
+            .collect::<Vec<_>>();
+
+        assert_eq!(rules.first(), Some(&"PROCESS-NAME,ChatGPT.exe,GLOBAL"));
+        assert_eq!(rules.get(1), Some(&"RULE-SET,smart-service-chatgpt,GLOBAL"));
+        assert!(rules.contains(&"DOMAIN-SUFFIX,spchatgpt.com,GLOBAL"));
+        let service_provider = result
+            .get("rule-providers")
+            .and_then(Value::as_mapping)
+            .and_then(|providers| providers.get("smart-service-chatgpt"))
+            .and_then(Value::as_mapping)
+            .expect("service rule provider should exist");
+        assert_eq!(service_provider.get("format").and_then(Value::as_str), Some("mrs"));
+        assert_eq!(service_provider.get("proxy").and_then(Value::as_str), Some("GLOBAL"));
+        let custom_index = rules
+            .iter()
+            .position(|rule| *rule == "DOMAIN-SUFFIX,custom.example,DIRECT")
+            .expect("custom rule should exist");
+        let subscription_index = rules
+            .iter()
+            .position(|rule| *rule == "DOMAIN-SUFFIX,subscription.example,GLOBAL")
+            .expect("subscription rule should exist");
+        assert!(custom_index < subscription_index);
+        assert_eq!(rules.last(), Some(&"MATCH,DIRECT"));
+        assert_eq!(rules.iter().filter(|rule| rule.starts_with("MATCH,")).count(), 1);
+    }
+
+    #[test]
+    fn gemini_binding_includes_observed_static_asset_host() {
+        let config = mapping(
+            r#"
+proxy-groups:
+  - name: GEMINI
+    type: select
+    proxies: [DIRECT]
+rules:
+  - MATCH,DIRECT
+"#,
+        );
+
+        let result = apply_smart_routing(
+            config,
+            Some(&json!({
+                "enabled": true,
+                "service_bindings": [
+                    { "service_id": "gemini", "enabled": true, "policy": "GEMINI" }
+                ],
+                "categories": {
+                    "ads": false,
+                    "lan": false,
+                    "domestic": false,
+                    "foreign": false,
+                    "ai": false,
+                    "streaming": false
+                }
+            })),
+            &Default::default(),
+        );
+
+        let rules = result
+            .get("rules")
+            .and_then(Value::as_sequence)
+            .expect("rules should be a sequence")
+            .iter()
+            .filter_map(Value::as_str)
+            .collect::<Vec<_>>();
+
+        assert!(rules.contains(&"DOMAIN-SUFFIX,gemini.gstatic.com,GEMINI"));
+    }
+
+    #[test]
+    fn disabled_or_unknown_services_do_not_generate_rules() {
+        let config = mapping("{rules: []}");
+        let result = apply_smart_routing(
+            config,
+            Some(&json!({
+                "enabled": true,
+                "service_bindings": [
+                    { "service_id": "chatgpt", "enabled": false, "policy": "DIRECT" },
+                    { "service_id": "unknown", "enabled": true, "policy": "DIRECT" }
+                ],
+                "categories": {
+                    "ads": false,
+                    "lan": false,
+                    "domestic": false,
+                    "foreign": false,
+                    "ai": false,
+                    "streaming": false
+                }
+            })),
+            &Default::default(),
+        );
+
+        assert!(
+            result
+                .get("rules")
+                .and_then(Value::as_sequence)
+                .is_none_or(Sequence::is_empty)
         );
     }
 }

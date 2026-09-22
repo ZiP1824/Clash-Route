@@ -21,12 +21,14 @@ const defaultCategories: Required<ISmartRoutingCategories> = {
 
 const defaultSmartRouting: Required<ISmartRoutingConfig> = {
   enabled: false,
+  auto_correction: true,
   proxy_policy: 'GLOBAL',
   direct_policy: 'DIRECT',
   reject_policy: 'REJECT',
   final_policy: 'GLOBAL',
   append_match: false,
   categories: defaultCategories,
+  service_bindings: [],
   custom_rules: [],
 }
 
@@ -40,6 +42,7 @@ function normalizeSmartRouting(value?: ISmartRoutingConfig) {
       ...defaultCategories,
       ...value?.categories,
     },
+    service_bindings: value?.service_bindings ?? [],
     custom_rules: value?.custom_rules ?? [],
   }
 }
@@ -47,9 +50,7 @@ function normalizeSmartRouting(value?: ISmartRoutingConfig) {
 export const SmartRoutingCard = () => {
   const { verge, mutateVerge, patchVerge } = useVerge()
   const [policyTargets, setPolicyTargets] = useState<string[]>([])
-  const [policySources, setPolicySources] = useState<Record<string, string>>(
-    {},
-  )
+  const [policySources, setPolicySources] = useState<Record<string, string>>({})
 
   const smartRouting = useMemo(
     () => normalizeSmartRouting(verge?.smart_routing),
@@ -95,8 +96,7 @@ export const SmartRoutingCard = () => {
       }
 
       mutateVerge(
-        (prev) =>
-          prev ? { ...prev, smart_routing: nextSmartRouting } : prev,
+        (prev) => (prev ? { ...prev, smart_routing: nextSmartRouting } : prev),
         false,
       )
 

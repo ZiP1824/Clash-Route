@@ -1,0 +1,524 @@
+[
+  {
+    "id": "chatgpt",
+    "name": "ChatGPT",
+    "category": "ai",
+    "updated_at": "2026-09-18",
+    "matchers": [
+      {
+        "type": "process-name",
+        "value": "ChatGPT.exe",
+        "platforms": ["windows"],
+        "confidence": "high",
+        "source": { "label": "本机进程标识" }
+      },
+      {
+        "type": "rule-set",
+        "value": "openai",
+        "confidence": "high",
+        "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/openai.mrs",
+        "source": {
+          "label": "MetaCubeX meta-rules-dat",
+          "url": "https://github.com/MetaCubeX/meta-rules-dat"
+        }
+      },
+      {
+        "type": "domain-suffix",
+        "value": "chatgpt.com",
+        "confidence": "high",
+        "source": { "label": "开发计划书" }
+      },
+      {
+        "type": "domain-suffix",
+        "value": "spchatgpt.com",
+        "confidence": "high",
+        "relation": "third-party",
+        "source": {
+          "label": "Superpower ChatGPT 官方网站",
+          "url": "https://spchatgpt.com/contact/"
+        }
+      },
+      {
+        "type": "domain-suffix",
+        "value": "openai.com",
+        "confidence": "high",
+        "source": { "label": "开发计划书" }
+      },
+      {
+        "type": "domain-suffix",
+        "value": "oaiusercontent.com",
+        "confidence": "high",
+        "source": { "label": "开发计划书" }
+      },
+      {
+        "type": "domain-suffix",
+        "value": "oaistatic.com",
+        "confidence": "high",
+        "source": { "label": "开发计划书" }
+      }
+    ],
+    "default_policy": "proxy"
+  },
+  {
+    "id": "claude",
+    "name": "Claude",
+    "category": "ai",
+    "updated_at": "2026-09-18",
+    "matchers": [
+      {
+        "type": "process-name",
+        "value": "Claude.exe",
+        "platforms": ["windows"],
+        "confidence": "high",
+        "source": { "label": "本机进程标识" }
+      },
+      {
+        "type": "rule-set",
+        "value": "anthropic",
+        "confidence": "high",
+        "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/anthropic.mrs",
+        "source": {
+          "label": "MetaCubeX meta-rules-dat",
+          "url": "https://github.com/MetaCubeX/meta-rules-dat"
+        }
+      },
+      {
+        "type": "domain-suffix",
+        "value": "claude.ai",
+        "confidence": "high",
+        "source": { "label": "内置基础规则" }
+      },
+      {
+        "type": "domain-suffix",
+        "value": "anthropic.com",
+        "confidence": "high",
+        "source": { "label": "内置基础规则" }
+      }
+    ],
+    "default_policy": "proxy"
+  },
+  {
+    "id": "gemini",
+    "name": "Gemini",
+    "category": "ai",
+    "updated_at": "2026-09-18",
+    "matchers": [
+      {
+        "type": "rule-set",
+        "value": "google-gemini",
+        "confidence": "high",
+        "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/google-gemini.mrs",
+        "source": {
+          "label": "MetaCubeX meta-rules-dat",
+          "url": "https://github.com/MetaCubeX/meta-rules-dat"
+        }
+      },
+      {
+        "type": "domain-suffix",
+        "value": "gemini.google.com",
+        "confidence": "high",
+        "source": { "label": "内置基础规则" }
+      },
+      {
+        "type": "domain-suffix",
+        "value": "gemini.gstatic.com",
+        "confidence": "high",
+        "relation": "first-party",
+        "source": { "label": "本机连接观测（Gemini 官网）" }
+      },
+      {
+        "type": "domain-suffix",
+        "value": "generativelanguage.googleapis.com",
+        "confidence": "high",
+        "source": { "label": "内置基础规则" }
+      }
+    ],
+    "default_policy": "proxy"
+  },
+  {
+    "id": "midjourney",
+    "name": "Midjourney",
+    "category": "ai",
+    "updated_at": "2026-09-18",
+    "matchers": [
+      {
+        "type": "domain-suffix",
+        "value": "midjourney.com",
+        "confidence": "high",
+        "source": { "label": "内置基础规则" }
+      },
+      {
+        "type": "domain-suffix",
+        "value": "cdn.midjourney.com",
+        "confidence": "medium",
+        "source": { "label": "内置基础规则" }
+      }
+    ],
+    "default_policy": "proxy"
+  },
+  {
+    "id": "github",
+    "name": "GitHub",
+    "category": "development",
+    "updated_at": "2026-09-18",
+    "matchers": [
+      {
+        "type": "process-name",
+        "value": "GitHubDesktop.exe",
+        "platforms": ["windows"],
+        "confidence": "high",
+        "source": { "label": "本机进程标识" }
+      },
+      {
+        "type": "rule-set",
+        "value": "github",
+        "confidence": "high",
+        "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/github.mrs",
+        "source": {
+          "label": "MetaCubeX meta-rules-dat",
+          "url": "https://github.com/MetaCubeX/meta-rules-dat"
+        }
+      },
+      {
+        "type": "domain-suffix",
+        "value": "github.com",
+        "confidence": "high",
+        "source": { "label": "内置基础规则" }
+      },
+      {
+        "type": "domain-suffix",
+        "value": "githubusercontent.com",
+        "confidence": "high",
+        "source": { "label": "内置基础规则" }
+      },
+      {
+        "type": "domain-suffix",
+        "value": "githubassets.com",
+        "confidence": "high",
+        "source": { "label": "内置基础规则" }
+      },
+      {
+        "type": "domain-suffix",
+        "value": "github.io",
+        "confidence": "medium",
+        "source": { "label": "内置基础规则" }
+      }
+    ],
+    "default_policy": "proxy"
+  },
+  {
+    "id": "docker",
+    "name": "Docker",
+    "category": "development",
+    "updated_at": "2026-09-18",
+    "matchers": [
+      {
+        "type": "process-name",
+        "value": "Docker Desktop.exe",
+        "platforms": ["windows"],
+        "confidence": "high",
+        "source": { "label": "本机进程标识" }
+      },
+      {
+        "type": "process-name",
+        "value": "com.docker.backend.exe",
+        "platforms": ["windows"],
+        "confidence": "high",
+        "source": { "label": "本机进程标识" }
+      },
+      {
+        "type": "rule-set",
+        "value": "docker",
+        "confidence": "high",
+        "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/docker.mrs",
+        "source": {
+          "label": "MetaCubeX meta-rules-dat",
+          "url": "https://github.com/MetaCubeX/meta-rules-dat"
+        }
+      },
+      {
+        "type": "domain-suffix",
+        "value": "docker.com",
+        "confidence": "high",
+        "source": { "label": "内置基础规则" }
+      },
+      {
+        "type": "domain-suffix",
+        "value": "docker.io",
+        "confidence": "high",
+        "source": { "label": "内置基础规则" }
+      },
+      {
+        "type": "domain-suffix",
+        "value": "registry-1.docker.io",
+        "confidence": "high",
+        "source": { "label": "内置基础规则" }
+      },
+      {
+        "type": "domain-suffix",
+        "value": "production.cloudflare.docker.com",
+        "confidence": "medium",
+        "source": { "label": "内置基础规则" }
+      }
+    ],
+    "default_policy": "proxy"
+  },
+  {
+    "id": "npm",
+    "name": "npm",
+    "category": "development",
+    "updated_at": "2026-09-18",
+    "matchers": [
+      {
+        "type": "domain-suffix",
+        "value": "npmjs.com",
+        "confidence": "high",
+        "source": { "label": "内置基础规则" }
+      },
+      {
+        "type": "domain-suffix",
+        "value": "npmjs.org",
+        "confidence": "high",
+        "source": { "label": "内置基础规则" }
+      }
+    ],
+    "default_policy": "proxy"
+  },
+  {
+    "id": "youtube",
+    "name": "YouTube",
+    "category": "streaming",
+    "updated_at": "2026-09-18",
+    "matchers": [
+      {
+        "type": "rule-set",
+        "value": "youtube",
+        "confidence": "high",
+        "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/youtube.mrs",
+        "source": {
+          "label": "MetaCubeX meta-rules-dat",
+          "url": "https://github.com/MetaCubeX/meta-rules-dat"
+        }
+      },
+      {
+        "type": "domain-suffix",
+        "value": "youtube.com",
+        "confidence": "high",
+        "source": { "label": "内置基础规则" }
+      },
+      {
+        "type": "domain-suffix",
+        "value": "youtu.be",
+        "confidence": "high",
+        "source": { "label": "内置基础规则" }
+      },
+      {
+        "type": "domain-suffix",
+        "value": "googlevideo.com",
+        "confidence": "high",
+        "source": { "label": "内置基础规则" }
+      },
+      {
+        "type": "domain-suffix",
+        "value": "ytimg.com",
+        "confidence": "high",
+        "source": { "label": "内置基础规则" }
+      }
+    ],
+    "default_policy": "proxy"
+  },
+  {
+    "id": "netflix",
+    "name": "Netflix",
+    "category": "streaming",
+    "updated_at": "2026-09-18",
+    "matchers": [
+      {
+        "type": "rule-set",
+        "value": "netflix",
+        "confidence": "high",
+        "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/netflix.mrs",
+        "source": {
+          "label": "MetaCubeX meta-rules-dat",
+          "url": "https://github.com/MetaCubeX/meta-rules-dat"
+        }
+      },
+      {
+        "type": "domain-suffix",
+        "value": "netflix.com",
+        "confidence": "high",
+        "source": { "label": "内置基础规则" }
+      },
+      {
+        "type": "domain-suffix",
+        "value": "nflxvideo.net",
+        "confidence": "high",
+        "source": { "label": "内置基础规则" }
+      },
+      {
+        "type": "domain-suffix",
+        "value": "nflximg.net",
+        "confidence": "high",
+        "source": { "label": "内置基础规则" }
+      },
+      {
+        "type": "domain-suffix",
+        "value": "nflxso.net",
+        "confidence": "high",
+        "source": { "label": "内置基础规则" }
+      },
+      {
+        "type": "domain-suffix",
+        "value": "nflxext.com",
+        "confidence": "high",
+        "source": { "label": "内置基础规则" }
+      }
+    ],
+    "default_policy": "proxy"
+  },
+  {
+    "id": "disney-plus",
+    "name": "Disney+",
+    "category": "streaming",
+    "updated_at": "2026-09-18",
+    "matchers": [
+      {
+        "type": "rule-set",
+        "value": "disney",
+        "confidence": "high",
+        "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/disney.mrs",
+        "source": {
+          "label": "MetaCubeX meta-rules-dat",
+          "url": "https://github.com/MetaCubeX/meta-rules-dat"
+        }
+      },
+      {
+        "type": "domain-suffix",
+        "value": "disneyplus.com",
+        "confidence": "high",
+        "source": { "label": "内置基础规则" }
+      },
+      {
+        "type": "domain-suffix",
+        "value": "bamgrid.com",
+        "confidence": "high",
+        "source": { "label": "内置基础规则" }
+      },
+      {
+        "type": "domain-suffix",
+        "value": "disney-plus.net",
+        "confidence": "medium",
+        "source": { "label": "内置基础规则" }
+      }
+    ],
+    "default_policy": "proxy"
+  },
+  {
+    "id": "steam",
+    "name": "Steam",
+    "category": "gaming",
+    "updated_at": "2026-09-18",
+    "matchers": [
+      {
+        "type": "process-name",
+        "value": "steam.exe",
+        "platforms": ["windows"],
+        "confidence": "high",
+        "source": { "label": "本机进程标识" }
+      },
+      {
+        "type": "process-name",
+        "value": "steamwebhelper.exe",
+        "platforms": ["windows"],
+        "confidence": "high",
+        "source": { "label": "本机进程标识" }
+      },
+      {
+        "type": "rule-set",
+        "value": "steam",
+        "confidence": "high",
+        "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/steam.mrs",
+        "source": {
+          "label": "MetaCubeX meta-rules-dat",
+          "url": "https://github.com/MetaCubeX/meta-rules-dat"
+        }
+      },
+      {
+        "type": "domain-suffix",
+        "value": "steampowered.com",
+        "confidence": "high",
+        "source": { "label": "内置基础规则" }
+      },
+      {
+        "type": "domain-suffix",
+        "value": "steamcommunity.com",
+        "confidence": "high",
+        "source": { "label": "内置基础规则" }
+      },
+      {
+        "type": "domain-suffix",
+        "value": "steamstatic.com",
+        "confidence": "high",
+        "source": { "label": "内置基础规则" }
+      },
+      {
+        "type": "domain-suffix",
+        "value": "steamcontent.com",
+        "confidence": "high",
+        "source": { "label": "内置基础规则" }
+      }
+    ],
+    "default_policy": "proxy"
+  },
+  {
+    "id": "epic",
+    "name": "Epic Games",
+    "category": "gaming",
+    "updated_at": "2026-09-18",
+    "matchers": [
+      {
+        "type": "process-name",
+        "value": "EpicGamesLauncher.exe",
+        "platforms": ["windows"],
+        "confidence": "high",
+        "source": { "label": "本机进程标识" }
+      },
+      {
+        "type": "process-name",
+        "value": "EpicWebHelper.exe",
+        "platforms": ["windows"],
+        "confidence": "high",
+        "source": { "label": "本机进程标识" }
+      },
+      {
+        "type": "rule-set",
+        "value": "epicgames",
+        "confidence": "high",
+        "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/epicgames.mrs",
+        "source": {
+          "label": "MetaCubeX meta-rules-dat",
+          "url": "https://github.com/MetaCubeX/meta-rules-dat"
+        }
+      },
+      {
+        "type": "domain-suffix",
+        "value": "epicgames.com",
+        "confidence": "high",
+        "source": { "label": "内置基础规则" }
+      },
+      {
+        "type": "domain-suffix",
+        "value": "unrealengine.com",
+        "confidence": "high",
+        "source": { "label": "内置基础规则" }
+      },
+      {
+        "type": "domain-suffix",
+        "value": "epicgames.dev",
+        "confidence": "medium",
+        "source": { "label": "内置基础规则" }
+      }
+    ],
+    "default_policy": "proxy"
+  }
+]

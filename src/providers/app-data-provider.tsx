@@ -6,6 +6,7 @@ import {
   getRules,
 } from 'tauri-plugin-mihomo-api'
 
+import { SmartRoutingConnectionController } from '@/components/smart-routing/connection-correction-controller'
 import { useVerge } from '@/hooks/use-verge'
 import {
   calcuProxies,
@@ -309,20 +310,23 @@ export const AppDataProvider = ({
   )
 
   return (
-    <ProxiesContext value={proxiesValue}>
-      <RulesContext value={rulesValue}>
-        <ClashConfigContext value={clashConfigValue}>
-          <SystemContext value={systemValue}>
-            <UptimeContext value={uptimeValue}>
-              <CoreDataStatusContext value={coreDataStatusValue}>
-                <RefreshersContext value={refreshersValue}>
-                  {children}
-                </RefreshersContext>
-              </CoreDataStatusContext>
-            </UptimeContext>
-          </SystemContext>
-        </ClashConfigContext>
-      </RulesContext>
-    </ProxiesContext>
+    <>
+      <SmartRoutingConnectionController config={verge?.smart_routing} />
+      <ProxiesContext value={proxiesValue}>
+        <RulesContext value={rulesValue}>
+          <ClashConfigContext value={clashConfigValue}>
+            <SystemContext value={systemValue}>
+              <UptimeContext value={uptimeValue}>
+                <CoreDataStatusContext value={coreDataStatusValue}>
+                  <RefreshersContext value={refreshersValue}>
+                    {children}
+                  </RefreshersContext>
+                </CoreDataStatusContext>
+              </UptimeContext>
+            </SystemContext>
+          </ClashConfigContext>
+        </RulesContext>
+      </ProxiesContext>
+    </>
   )
 }

@@ -29,6 +29,7 @@ import { calcuProxies, ensureSmartRoutingProxyTargets } from '@/services/cmds'
 import delayManager from '@/services/delay'
 
 const SELECTOR_GROUP = 'smart-routing-selector'
+const EMPTY_OPTION_SOURCES: Record<string, string> = {}
 const PRESET_PROXY_NAMES = new Set([
   'GLOBAL',
   'DIRECT',
@@ -48,6 +49,7 @@ type PolicyOption = {
 }
 
 type PolicySelectorProps = {
+  disabled?: boolean
   fieldLabel?: string
   label?: string
   onChange: (value: string) => void
@@ -204,11 +206,12 @@ const PolicyOptionCard = ({
 }
 
 export const PolicySelector = ({
+  disabled = false,
   fieldLabel,
   label = '选择节点',
   onChange,
   onOpen,
-  optionSources = {},
+  optionSources = EMPTY_OPTION_SOURCES,
   options,
   value,
   width = 220,
@@ -239,7 +242,7 @@ export const PolicySelector = ({
 
         setProxyMap(buildProxyMap(proxyData))
       })
-      .catch(() => setProxyMap({}))
+      .catch(() => undefined)
 
     return () => {
       active = false
@@ -289,18 +292,18 @@ export const PolicySelector = ({
     ]
   }, [normalizedOptions])
 
-  useEffect(() => {
-    if (!sources.includes(selectedSource)) {
-      setSelectedSource('全部')
-    }
-  }, [selectedSource, sources])
+  const effectiveSelectedSource = sources.includes(selectedSource)
+    ? selectedSource
+    : '全部'
 
   const visibleOptions = useMemo(() => {
     const keyword = filterText.trim().toLowerCase()
     const sourceFiltered =
-      selectedSource === '全部'
+      effectiveSelectedSource === '全部'
         ? normalizedOptions
-        : normalizedOptions.filter((option) => option.source === selectedSource)
+        : normalizedOptions.filter(
+            (option) => option.source === effectiveSelectedSource,
+          )
     const filtered = keyword
       ? sourceFiltered.filter((option) =>
           option.name.toLowerCase().includes(keyword),
@@ -308,7 +311,13 @@ export const PolicySelector = ({
       : sourceFiltered
 
     return sortOptions(filtered, sortType, timeout)
-  }, [filterText, normalizedOptions, selectedSource, sortType, timeout])
+  }, [
+    effectiveSelectedSource,
+    filterText,
+    normalizedOptions,
+    sortType,
+    timeout,
+  ])
 
   const toggleSort = () => {
     setSortType((current) =>
@@ -367,12 +376,14 @@ export const PolicySelector = ({
   return (
     <>
       <ButtonBase
+        disabled={disabled}
         onClick={openSelector}
         sx={({ palette }) => ({
           bgcolor: 'background.paper',
           border: `1px solid ${palette.divider}`,
           borderRadius: 1,
           color: value ? 'text.primary' : 'text.secondary',
+          opacity: disabled ? 0.55 : 1,
           display: 'flex',
           fontSize: 14,
           height: fieldLabel ? 42 : 37,
@@ -522,11 +533,15 @@ export const PolicySelector = ({
                 <Chip
                   key={source}
                   clickable
-                  color={selectedSource === source ? 'primary' : 'default'}
+                  color={
+                    effectiveSelectedSource === source ? 'primary' : 'default'
+                  }
                   label={source}
                   onClick={() => setSelectedSource(source)}
                   size="small"
-                  variant={selectedSource === source ? 'filled' : 'outlined'}
+                  variant={
+                    effectiveSelectedSource === source ? 'filled' : 'outlined'
+                  }
                   sx={{ flexShrink: 0 }}
                 />
               ))}

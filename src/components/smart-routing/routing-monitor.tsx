@@ -3,12 +3,20 @@ import { useMemo } from 'react'
 
 import { useConnectionData } from '@/hooks/use-connection-data'
 import { useVisibility } from '@/hooks/use-visibility'
+import {
+  serviceMatcherSupportsCurrentPlatform,
+  smartRoutingServiceMap,
+} from '@/services/smart-routing-services'
 
 type RoutingMonitorProps = {
   compact?: boolean
   customRules?: ISmartRoutingCustomRule[]
+  serviceBindings?: ISmartRoutingServiceBinding[]
   enabled?: boolean
 }
+
+const EMPTY_CUSTOM_RULES: ISmartRoutingCustomRule[] = []
+const EMPTY_SERVICE_BINDINGS: ISmartRoutingServiceBinding[] = []
 
 type RuleTarget = {
   key: string
@@ -126,6 +134,43 @@ function normalizeRuleTargets(customRules: ISmartRoutingCustomRule[] = []) {
     .filter((rule): rule is RuleTarget => Boolean(rule))
 }
 
+function normalizeServiceTargets(
+  serviceBindings: ISmartRoutingServiceBinding[] = [],
+) {
+  return serviceBindings.flatMap((binding): RuleTarget[] => {
+    if (binding.enabled === false) return []
+    const service = smartRoutingServiceMap.get(binding.service_id)
+    if (!service) return []
+
+    return service.matchers.flatMap((matcher): RuleTarget[] => {
+      if (
+        !serviceMatcherSupportsCurrentPlatform(matcher) ||
+        !['domain-suffix', 'process-name'].includes(matcher.type)
+      ) {
+        return []
+      }
+
+      const type = matcher.type === 'process-name' ? 'process' : 'domain'
+      const matchValue =
+        type === 'process'
+          ? normalizeProcessName(matcher.value)
+          : normalizeDomain(matcher.value)
+      if (!matchValue) return []
+
+      return [
+        {
+          key: `service:${service.id}:${matcher.type}:${matchValue}`,
+          label: `${service.name} · ${matcher.value}`,
+          matchValue,
+          originalValue: matcher.value,
+          policy: binding.policy?.trim() || '-',
+          type,
+        },
+      ]
+    })
+  })
+}
+
 function buildRoutingRows(
   targets: RuleTarget[],
   connections: IConnectionsItem[],
@@ -158,7 +203,8 @@ function buildRoutingRows(
 
 export const RoutingMonitor = ({
   compact = false,
-  customRules = [],
+  customRules = EMPTY_CUSTOM_RULES,
+  serviceBindings = EMPTY_SERVICE_BINDINGS,
   enabled = true,
 }: RoutingMonitorProps) => {
   const visible = useVisibility()
@@ -167,8 +213,11 @@ export const RoutingMonitor = ({
   } = useConnectionData({ enabled: enabled && visible })
 
   const targets = useMemo(
-    () => normalizeRuleTargets(customRules),
-    [customRules],
+    () => [
+      ...normalizeServiceTargets(serviceBindings),
+      ...normalizeRuleTargets(customRules),
+    ],
+    [customRules, serviceBindings],
   )
   const rows = useMemo(
     () => buildRoutingRows(targets, data.activeConnections),
